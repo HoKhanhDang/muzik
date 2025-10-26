@@ -17,6 +17,8 @@ const instantPlayUrl = ref('')
 const draggedIndex = ref(null)
 const draggedOverIndex = ref(null)
 const instantPlayHistory = ref([])
+const addingToPlaylist = ref(null) // Track which video is being added
+const showSidebar = ref(true) // Toggle sidebar visibility
 
 // Form data for adding new videos
 const newVideo = ref({
@@ -58,10 +60,16 @@ const checkAndInitializePlayer = () => {
     youtubeApiReady: youtubeApiReady.value,
     ytExists: !!window.YT,
     videoCount: videoIds.value.length,
-    playerExists: !!player.value
+    playerExists: !!player.value,
   })
-  
-  if (youtubeApiReady.value && window.YT && window.YT.Player && videoIds.value.length > 0 && !player.value) {
+
+  if (
+    youtubeApiReady.value &&
+    window.YT &&
+    window.YT.Player &&
+    videoIds.value.length > 0 &&
+    !player.value
+  ) {
     // Wait a tick to ensure the DOM element exists
     setTimeout(() => {
       const playerElement = document.getElementById('player')
@@ -261,7 +269,7 @@ const initializePlayer = () => {
   }
 
   const videoId = videoIds.value[currentVideoIndex.value]
-  
+
   if (!videoId) {
     console.error('Invalid video ID at index:', currentVideoIndex.value)
     return
@@ -289,7 +297,7 @@ const initializePlayer = () => {
           isPlayerReady.value = true
           event.target.setVolume(volume.value)
           // Try to play - will fail gracefully if autoplay blocked
-          event.target.playVideo().catch(err => {
+          event.target.playVideo().catch((err) => {
             console.log('Autoplay blocked, user needs to click play')
           })
         },
@@ -396,42 +404,45 @@ const handleDragLeave = () => {
 
 const handleDrop = async (event, dropIndex) => {
   event.preventDefault()
-  
+
   if (draggedIndex.value === null || draggedIndex.value === dropIndex) {
     return
   }
-  
+
   try {
     loading.value = true
-    
+
     // Create new order array
     const newOrder = [...videos.value]
     const draggedItem = newOrder[draggedIndex.value]
-    
+
     // Remove dragged item
     newOrder.splice(draggedIndex.value, 1)
-    
+
     // Insert at new position
     newOrder.splice(dropIndex, 0, draggedItem)
-    
+
     // Update current video index if needed
     if (currentVideoIndex.value === draggedIndex.value) {
       currentVideoIndex.value = dropIndex
-    } else if (draggedIndex.value < currentVideoIndex.value && dropIndex >= currentVideoIndex.value) {
+    } else if (
+      draggedIndex.value < currentVideoIndex.value &&
+      dropIndex >= currentVideoIndex.value
+    ) {
       currentVideoIndex.value--
-    } else if (draggedIndex.value > currentVideoIndex.value && dropIndex <= currentVideoIndex.value) {
+    } else if (
+      draggedIndex.value > currentVideoIndex.value &&
+      dropIndex <= currentVideoIndex.value
+    ) {
       currentVideoIndex.value++
     }
-    
+
     // Update videos array
     videos.value = newOrder
-    videoIds.value = newOrder.map(video => video.video_id)
-    
-    // Update player if it's ready
-    if (player.value && isPlayerReady.value) {
-      player.value.loadVideoById(videoIds.value[currentVideoIndex.value])
-    }
-    
+    videoIds.value = newOrder.map((video) => video.video_id)
+
+    // Player will continue playing current video without interruption
+    // currentVideoIndex has been updated to reflect new position
   } catch (error) {
     console.error('Error reordering videos:', error)
     alert('Error reordering videos')
@@ -442,36 +453,33 @@ const handleDrop = async (event, dropIndex) => {
 
 const moveVideoToTop = async (videoIndex) => {
   if (videoIndex === 0) return // Already at top
-  
+
   try {
     loading.value = true
-    
+
     // Create new order array
     const newOrder = [...videos.value]
     const videoToMove = newOrder[videoIndex]
-    
+
     // Remove video from current position
     newOrder.splice(videoIndex, 1)
-    
+
     // Insert at the beginning
     newOrder.unshift(videoToMove)
-    
+
     // Update current video index
     if (currentVideoIndex.value === videoIndex) {
       currentVideoIndex.value = 0
     } else if (currentVideoIndex.value < videoIndex) {
       currentVideoIndex.value++
     }
-    
+
     // Update videos array
     videos.value = newOrder
-    videoIds.value = newOrder.map(video => video.video_id)
-    
-    // Update player if it's ready
-    if (player.value && isPlayerReady.value) {
-      player.value.loadVideoById(videoIds.value[currentVideoIndex.value])
-    }
-    
+    videoIds.value = newOrder.map((video) => video.video_id)
+
+    // Player will continue playing current video without interruption
+    // currentVideoIndex has been updated to reflect new position
   } catch (error) {
     console.error('Error moving video to top:', error)
     alert('Error moving video to top')
@@ -485,31 +493,42 @@ const instantPlay = async () => {
     alert('Please enter a YouTube URL or Video ID')
     return
   }
-  
+
   try {
     // Extract video ID from URL
     let videoId = instantPlayUrl.value
-    const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/
+    const regex =
+      /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/
     const match = instantPlayUrl.value.match(regex)
     if (match) {
       videoId = match[1]
     }
-    
+
     // Add to history (only if not already in history)
-    if (!instantPlayHistory.value.some(h => h.video_id === videoId)) {
+    if (!instantPlayHistory.value.some((h) => h.video_id === videoId)) {
+      // Try to fetch video title
+      let title = videoId
+      try {
+        const videoInfo = await fetchVideoInfo(videoId)
+        title = videoInfo.title || videoId
+      } catch (error) {
+        console.log('Could not fetch title for history:', error)
+      }
+
       const historyItem = {
         video_id: videoId,
+        title: title,
         url: instantPlayUrl.value,
-        played_at: new Date().toISOString()
+        played_at: new Date().toISOString(),
       }
       instantPlayHistory.value.unshift(historyItem)
-      
+
       // Keep only last 50 items
       if (instantPlayHistory.value.length > 50) {
         instantPlayHistory.value = instantPlayHistory.value.slice(0, 50)
       }
     }
-    
+
     // Play instantly without adding to playlist
     if (player.value && isPlayerReady.value) {
       player.value.loadVideoById(videoId)
@@ -526,7 +545,7 @@ const instantPlay = async () => {
             loop: 0,
             modestbranding: 1,
             rel: 0,
-            showinfo: 1
+            showinfo: 1,
           },
           events: {
             onReady: (event) => {
@@ -538,12 +557,12 @@ const instantPlay = async () => {
               if (event.data === YT.PlayerState.ENDED) {
                 // Don't auto-next for instant play
               }
-            }
-          }
+            },
+          },
         })
       }
     }
-    
+
     instantPlayUrl.value = ''
   } catch (error) {
     console.error('Error playing video:', error)
@@ -561,6 +580,61 @@ const clearHistory = () => {
   if (confirm('Clear all instant play history?')) {
     instantPlayHistory.value = []
   }
+}
+
+const addFromHistory = async (videoId) => {
+  try {
+    addingToPlaylist.value = videoId
+
+    // Check if video already exists in playlist
+    if (videos.value.some((v) => v.video_id === videoId)) {
+      alert('This video is already in your playlist!')
+      return
+    }
+
+    // Fetch video info from YouTube
+    const videoInfo = await fetchVideoInfo(videoId)
+
+    // Prepare video data
+    const videoData = {
+      title: videoInfo.title || videoId,
+      video_id: videoId,
+      youtube_url: `https://www.youtube.com/watch?v=${videoId}`,
+      thumbnail_url:
+        videoInfo.thumbnail_url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+      duration: videoInfo.duration || '',
+    }
+
+    // Add to database
+    const response = await fetch(`${API_BASE}/videos`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(videoData),
+    })
+
+    if (response.ok) {
+      await fetchVideos() // Refresh the list
+      alert('✅ Video added to playlist!')
+    } else {
+      const error = await response.json()
+      alert(`Error: ${error.error}`)
+    }
+  } catch (error) {
+    console.error('Error adding video from history:', error)
+    alert('Error adding video to playlist')
+  } finally {
+    addingToPlaylist.value = null
+  }
+}
+
+const isInPlaylist = (videoId) => {
+  return videos.value.some((v) => v.video_id === videoId)
+}
+
+const toggleSidebar = () => {
+  showSidebar.value = !showSidebar.value
 }
 
 // Computed properties
@@ -587,19 +661,26 @@ onMounted(async () => {
 
 <template>
   <header class="app-header">
-    <h1>🎵 Muzikkkk</h1>
-    
+    <!-- Toggle Sidebar Button -->
+    <div class="app-header-logo">
+      <button @click="toggleSidebar" class="sidebar-toggle-btn">
+        <span class="burger-icon">☰</span>
+      </button>
+
+      <div class="app-header-title">MUZIK</div>
+    </div>
+
     <!-- Tab Navigation -->
-    <div class="tab-navigation">
-      <button 
-        @click="activeTab = 'instant'" 
+    <div v-show="showSidebar" class="tab-navigation">
+      <button
+        @click="activeTab = 'instant'"
         :class="{ active: activeTab === 'instant' }"
         class="tab-btn"
       >
         ⚡ Instant Play
       </button>
-      <button 
-        @click="activeTab = 'playlist'" 
+      <button
+        @click="activeTab = 'playlist'"
         :class="{ active: activeTab === 'playlist' }"
         class="tab-btn"
       >
@@ -608,7 +689,7 @@ onMounted(async () => {
     </div>
   </header>
   <main>
-    <div id="video-container">
+    <div id="video-container" :class="{ 'full-width': !showSidebar }">
       <div v-if="loading && videoIds.length === 0" class="loading-state">
         <div class="spinner"></div>
         <p>Loading your playlist...</p>
@@ -620,19 +701,18 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div id="list-container">
-
+    <div v-show="showSidebar" id="list-container">
       <!-- Instant Play Tab -->
       <div v-if="activeTab === 'instant'" class="tab-content instant-play-tab">
         <h3>⚡ Instant Play</h3>
         <p class="tab-description">Play any YouTube video instantly without adding to playlist</p>
-        
+
         <div class="instant-play-form">
           <div class="form-group">
             <label>YouTube URL or Video ID:</label>
             <div class="instant-input-group">
-              <input 
-                v-model="instantPlayUrl" 
+              <input
+                v-model="instantPlayUrl"
                 placeholder="https://youtube.com/watch?v=... or Video ID"
                 @keyup.enter="instantPlay"
               />
@@ -642,7 +722,7 @@ onMounted(async () => {
             </div>
           </div>
         </div>
-        
+
         <div class="quick-actions">
           <h4>Quick Actions:</h4>
           <div class="quick-buttons">
@@ -657,30 +737,46 @@ onMounted(async () => {
             </button>
           </div>
         </div>
-        
+
         <!-- History Section -->
         <div class="history-section" v-if="instantPlayHistory.length > 0">
           <div class="history-header">
             <h4>📜 History</h4>
-            <button @click="clearHistory" class="clear-history-btn">
-              🗑️ Clear
-            </button>
+            <button @click="clearHistory" class="clear-history-btn">🗑️ Clear</button>
           </div>
           <div class="history-list">
-            <div 
-              v-for="(item, index) in instantPlayHistory" 
-              :key="index"
-              class="history-item"
-              @click="playFromHistory(item.video_id)"
-            >
-              <div class="history-thumbnail">
-                <img :src="`https://img.youtube.com/vi/${item.video_id}/mqdefault.jpg`" alt="Thumbnail" />
+            <div v-for="(item, index) in instantPlayHistory" :key="index" class="history-item">
+              <div class="history-thumbnail" @click="playFromHistory(item.video_id)">
+                <img
+                  :src="`https://img.youtube.com/vi/${item.video_id}/mqdefault.jpg`"
+                  alt="Thumbnail"
+                />
+                <div class="play-overlay">
+                  <span>▶️</span>
+                </div>
               </div>
-              <div class="history-info">
-                <p class="history-id">{{ item.video_id }}</p>
+              <div class="history-info" @click="playFromHistory(item.video_id)">
+                <p class="history-title">{{ item.title || item.video_id }}</p>
                 <p class="history-time">{{ new Date(item.played_at).toLocaleString() }}</p>
               </div>
-              <button class="history-play-btn">▶️</button>
+              <div class="history-actions">
+                <button
+                  v-if="!isInPlaylist(item.video_id) && addingToPlaylist !== item.video_id"
+                  @click.stop="addFromHistory(item.video_id)"
+                  class="history-add-btn"
+                  title="Add to Playlist"
+                >
+                  ➕
+                </button>
+                <div
+                  v-else-if="addingToPlaylist === item.video_id"
+                  class="adding-spinner"
+                  title="Adding to playlist..."
+                >
+                  <div class="spinner-icon">⏳</div>
+                </div>
+                <span v-else class="in-playlist-badge" title="Already in playlist">✓</span>
+              </div>
             </div>
           </div>
         </div>
@@ -688,189 +784,181 @@ onMounted(async () => {
 
       <!-- Playlist Tab -->
       <div v-if="activeTab === 'playlist'" class="tab-content playlist-tab">
-        <div class="playlist-header">
-          <h3>📋 Your Playlist</h3>
-          <button @click="showAddForm = !showAddForm" class="add-btn">
-            {{ showAddForm ? 'Cancel' : '+ Add Video' }}
-          </button>
-        </div>
-
-      <!-- Add Video Form -->
-      <div v-if="showAddForm" class="add-form">
-        <h3>Add New Video</h3>
-
-        <div class="form-group">
-          <label>YouTube URL:</label>
-          <input v-model="newVideo.youtube_url" placeholder="https://youtube.com/watch?v=..." />
-        </div>
-
-        <div class="form-group">
-          <label>OR Video ID:</label>
-          <input v-model="newVideo.video_id" placeholder="XbLemOwzdxk" />
-        </div>
-
-        <div class="form-group">
-          <label>Title:</label>
-          <div class="title-input-group">
-            <input v-model="newVideo.title" placeholder="Video title (auto-filled)" />
-            <button @click="fetchVideoDetails" :disabled="loading" class="fetch-btn">
-              {{ loading ? '⏳' : '🔍' }} Fetch
-            </button>
-          </div>
-        </div>
-
-        <div v-if="newVideo.thumbnail_url" class="form-group">
-          <label>Thumbnail Preview:</label>
-          <img :src="newVideo.thumbnail_url" class="thumbnail-preview" />
-        </div>
-
-        <div class="form-group">
-          <label>Duration (optional):</label>
-          <input v-model="newVideo.duration" placeholder="3:45" />
-        </div>
-
-        <div class="form-actions">
-          <button @click="addVideo" :disabled="loading" class="save-btn">
-            {{ loading ? 'Adding...' : 'Add Video' }}
-          </button>
-          <button
-            @click="
-              resetForm(),
-              showAddForm = false
-            "
-            class="cancel-btn"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-
-      <!-- Player Info -->
-      <div v-if="currentVideo" class="playlist-info">
-        <h3>Now Playing:</h3>
-        <p class="current-title">{{ currentVideo.title }}</p>
-        <p class="current-id">ID: {{ currentVideo.video_id }}</p>
-        <div class="controls">
-          <button
-            @click="playPreviousVideo"
-            :disabled="videoIds.length <= 1"
-            class="control-btn prev-btn"
-          >
-            <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
-            </svg>
-          </button>
-
-          <div class="volume-controls">
-            <button @click="adjustVolume(-10)" class="control-btn volume-btn">
+        <!-- Player Info -->
+        <div v-if="currentVideo" class="playlist-info">
+          <h3>Now Playing:</h3>
+          <p class="current-title">{{ currentVideo.title }}</p>
+          <p class="current-id">ID: {{ currentVideo.video_id }}</p>
+          <div class="controls">
+            <button
+              @click="playPreviousVideo"
+              :disabled="videoIds.length <= 1"
+              class="control-btn prev-btn"
+            >
               <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M11 5L6 9H2v6h4l5 4V5z" />
+                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
               </svg>
             </button>
 
-            <button @click="toggleMute" class="control-btn mute-btn" :class="{ muted: isMuted }">
-              <svg v-if="!isMuted" class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-                <path
-                  d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"
-                />
-              </svg>
-              <svg v-else class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-                <path
-                  d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"
-                />
-              </svg>
-            </button>
+            <div class="volume-controls">
+              <button @click="adjustVolume(-10)" class="control-btn volume-btn">
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M11 5L6 9H2v6h4l5 4V5z" />
+                </svg>
+              </button>
 
-            <button @click="adjustVolume(10)" class="control-btn volume-btn">
-              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-                <path
-                  d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"
-                />
-              </svg>
-            </button>
+              <button @click="toggleMute" class="control-btn mute-btn" :class="{ muted: isMuted }">
+                <svg v-if="!isMuted" class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+                  <path
+                    d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"
+                  />
+                </svg>
+                <svg v-else class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+                  <path
+                    d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"
+                  />
+                </svg>
+              </button>
 
-            <div class="volume-slider-container">
-              <button @click="toggleVolumeSlider" class="control-btn volume-slider-btn">
+              <button @click="adjustVolume(10)" class="control-btn volume-btn">
                 <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
                   <path
                     d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"
                   />
                 </svg>
-                <span class="volume-text">{{ volume }}%</span>
               </button>
 
-              <div v-if="showVolumeSlider" class="volume-slider">
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  v-model="volume"
-                  @input="setVolume(volume)"
-                  class="slider"
-                />
+              <div class="volume-slider-container">
+                <button @click="toggleVolumeSlider" class="control-btn volume-slider-btn">
+                  <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+                    <path
+                      d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"
+                    />
+                  </svg>
+                  <span class="volume-text">{{ volume }}%</span>
+                </button>
+
+                <div v-if="showVolumeSlider" class="volume-slider">
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    v-model="volume"
+                    @input="setVolume(volume)"
+                    class="slider"
+                  />
+                </div>
               </div>
+            </div>
+
+            <button
+              @click="playNextVideo"
+              :disabled="videoIds.length <= 1"
+              class="control-btn next-btn"
+            >
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Add Video Button -->
+        <div class="add-video-section">
+          <button @click="showAddForm = !showAddForm" class="add-btn">
+            {{ showAddForm ? '✖ Cancel' : '➕ Add Video' }}
+          </button>
+        </div>
+
+        <!-- Add Video Form -->
+        <div v-if="showAddForm" class="add-form">
+          <h3>Add New Video</h3>
+
+          <div class="form-group">
+            <label>YouTube URL:</label>
+            <input v-model="newVideo.youtube_url" placeholder="https://youtube.com/watch?v=..." />
+          </div>
+
+          <div class="form-group">
+            <label>OR Video ID:</label>
+            <input v-model="newVideo.video_id" placeholder="XbLemOwzdxk" />
+          </div>
+
+          <div class="form-group">
+            <label>Title:</label>
+            <div class="title-input-group">
+              <input v-model="newVideo.title" placeholder="Video title (auto-filled)" />
+              <button @click="fetchVideoDetails" :disabled="loading" class="fetch-btn">
+                {{ loading ? '⏳' : '🔍' }} Fetch
+              </button>
             </div>
           </div>
 
-          <button
-            @click="playNextVideo"
-            :disabled="videoIds.length <= 1"
-            class="control-btn next-btn"
-          >
-            <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
-            </svg>
-          </button>
-        </div>
-      </div>
+          <div v-if="newVideo.thumbnail_url" class="form-group">
+            <label>Thumbnail Preview:</label>
+            <img :src="newVideo.thumbnail_url" class="thumbnail-preview" />
+          </div>
 
-      <!-- Playlist -->
-      <div class="playlist">
-        <h3>Your Videos ({{ videos.length }})</h3>
-        <div v-if="loading" class="loading">Loading...</div>
-        <ul v-else-if="videos.length > 0">
-          <li
-            v-for="(video, index) in videos"
-            :key="video.id"
-            :class="{ 
-              active: index === currentVideoIndex,
-              'drag-over': draggedOverIndex === index,
-              'dragging': draggedIndex === index
-            }"
-            @click="playVideoAtIndex(index)"
-            draggable="true"
-            @dragstart="handleDragStart($event, index)"
-            @dragend="handleDragEnd"
-            @dragover="handleDragOver($event, index)"
-            @dragleave="handleDragLeave"
-            @drop="handleDrop($event, index)"
-          >
-            <div class="video-item">
-              <div class="drag-handle">⋮⋮</div>
-              <div class="video-info">
-                <span class="video-title">{{ video.title }}</span>
-                <span class="video-id">{{ video.video_id }}</span>
+          <div class="form-group">
+            <label>Duration (optional):</label>
+            <input v-model="newVideo.duration" placeholder="3:45" />
+          </div>
+
+          <div class="form-actions">
+            <button @click="addVideo" :disabled="loading" class="save-btn">
+              {{ loading ? 'Adding...' : 'Add Video' }}
+            </button>
+            <button @click="(resetForm(), (showAddForm = false))" class="cancel-btn">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Playlist -->
+        <div class="playlist">
+          <h3>Your Videos ({{ videos.length }})</h3>
+          <div v-if="loading" class="loading">Loading...</div>
+          <ul v-else-if="videos.length > 0">
+            <li
+              v-for="(video, index) in videos"
+              :key="video.id"
+              :class="{
+                active: index === currentVideoIndex,
+                'drag-over': draggedOverIndex === index,
+                dragging: draggedIndex === index,
+              }"
+              @click="playVideoAtIndex(index)"
+              draggable="true"
+              @dragstart="handleDragStart($event, index)"
+              @dragend="handleDragEnd"
+              @dragover="handleDragOver($event, index)"
+              @dragleave="handleDragLeave"
+              @drop="handleDrop($event, index)"
+            >
+              <div class="video-item">
+                <div class="drag-handle">⋮⋮</div>
+                <div class="video-info">
+                  <span class="video-title">{{ video.title }}</span>
+                  <span class="video-id">{{ video.video_id }}</span>
+                </div>
+                <div class="video-actions">
+                  <button
+                    @click.stop="moveVideoToTop(index)"
+                    :disabled="index === 0"
+                    class="move-to-top-btn"
+                    title="Move to Top"
+                  >
+                    ⬆️
+                  </button>
+                  <button @click.stop="deleteVideo(video.id)" class="delete-btn">🗑️</button>
+                </div>
               </div>
-              <div class="video-actions">
-                <button 
-                  @click.stop="moveVideoToTop(index)" 
-                  :disabled="index === 0"
-                  class="move-to-top-btn"
-                  title="Move to Top"
-                >
-                  ⬆️
-                </button>
-                <button @click.stop="deleteVideo(video.id)" class="delete-btn">🗑️</button>
-              </div>
-            </div>
-          </li>
-        </ul>
-        <div v-else class="empty-playlist">
-          <p>No videos yet. Add your first video!</p>
+            </li>
+          </ul>
+          <div v-else class="empty-playlist">
+            <p>No videos yet. Add your first video!</p>
+          </div>
         </div>
       </div>
-      
-      </div> <!-- End Playlist Tab -->
+      <!-- End Playlist Tab -->
     </div>
   </main>
 </template>
@@ -888,15 +976,45 @@ onMounted(async () => {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(10px);
   height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.app-header-logo {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.app-header-title {
+  color: #4ecdc4;
+  font-size: 35px;
+  font-weight: bold;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.app-header-logo .sidebar-toggle-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+}
+
+.app-header-logo .sidebar-toggle-btn:hover {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
 }
 
 .app-header h1 {
-  margin: 0 0 10px 0;
+  margin: 0;
   color: #4ecdc4;
   font-size: 24px;
-  text-align: center;
   font-weight: bold;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  flex-shrink: 0;
 }
 main {
   width: 100vw;
@@ -923,6 +1041,11 @@ main {
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: width 0.3s ease;
+}
+
+#video-container.full-width {
+  width: 100%;
 }
 
 #player {
@@ -940,6 +1063,45 @@ main {
   color: #888;
 }
 
+.sidebar-toggle-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  color: white;
+  width: 50px;
+  height: 50px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+
+.sidebar-toggle-btn .burger-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+
+.sidebar-toggle-btn:hover {
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.5);
+  transform: translateY(-2px);
+}
+
+.sidebar-toggle-btn:hover .burger-icon {
+  transform: scale(1.2) rotate(90deg);
+}
+
+.sidebar-toggle-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
 #list-container {
   width: 30%;
   height: 100%;
@@ -949,16 +1111,19 @@ main {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  transition: all 0.3s ease;
 }
-
 
 .tab-navigation {
   display: flex;
   background-color: #3a3a3a;
   border-radius: 8px;
   padding: 3px;
-  margin-bottom: 15px;
   flex-shrink: 0;
+  flex: 1;
+  max-width: 400px;
+  transition: all 0.3s ease;
+  align-items: center;
 }
 
 .tab-btn {
@@ -998,8 +1163,14 @@ main {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Instant Play Tab Styles */
@@ -1529,9 +1700,42 @@ main {
   }
 }
 
+/* Add Video Section */
+.add-video-section {
+  margin-bottom: 15px;
+  display: flex;
+  justify-content: center;
+}
+
+.add-video-section .add-btn {
+  background: linear-gradient(135deg, #4ecdc4 0%, #45b7aa 100%);
+  border: none;
+  color: white;
+  padding: 12px 24px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(78, 205, 196, 0.3);
+  width: 100%;
+  max-width: 300px;
+}
+
+.add-video-section .add-btn:hover {
+  background: linear-gradient(135deg, #45b7aa 0%, #4ecdc4 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(78, 205, 196, 0.4);
+}
+
+.add-video-section .add-btn:active {
+  transform: translateY(0);
+}
+
 .playlist {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .playlist h3 {
@@ -1647,7 +1851,7 @@ main {
   border-radius: 8px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   color: white;
-  box-shadow: 
+  box-shadow:
     0 4px 15px rgba(102, 126, 234, 0.3),
     inset 0 1px 0 rgba(255, 255, 255, 0.2);
   position: relative;
@@ -1679,14 +1883,14 @@ main {
 .move-to-top-btn:hover:not(:disabled) {
   background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
   transform: translateY(-2px) scale(1.05);
-  box-shadow: 
+  box-shadow:
     0 8px 25px rgba(102, 126, 234, 0.4),
     inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
 .move-to-top-btn:active:not(:disabled) {
   transform: translateY(0) scale(0.98);
-  box-shadow: 
+  box-shadow:
     0 2px 10px rgba(102, 126, 234, 0.3),
     inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
@@ -1695,7 +1899,7 @@ main {
   background: linear-gradient(135deg, #555 0%, #444 100%);
   cursor: not-allowed;
   transform: none;
-  box-shadow: 
+  box-shadow:
     0 2px 8px rgba(0, 0, 0, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
   opacity: 0.6;
@@ -1710,7 +1914,7 @@ main {
   border-radius: 8px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   color: white;
-  box-shadow: 
+  box-shadow:
     0 4px 15px rgba(255, 107, 107, 0.3),
     inset 0 1px 0 rgba(255, 255, 255, 0.2);
   position: relative;
@@ -1742,14 +1946,14 @@ main {
 .delete-btn:hover {
   background: linear-gradient(135deg, #ee5a52 0%, #ff6b6b 100%);
   transform: translateY(-2px) scale(1.05);
-  box-shadow: 
+  box-shadow:
     0 8px 25px rgba(255, 107, 107, 0.4),
     inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
 .delete-btn:active {
   transform: translateY(0) scale(0.98);
-  box-shadow: 
+  box-shadow:
     0 2px 10px rgba(255, 107, 107, 0.3),
     inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
@@ -1795,8 +1999,12 @@ main {
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 /* History Section Styles */
@@ -1851,21 +2059,26 @@ main {
   padding: 10px;
   background-color: #2a2a2a;
   border-radius: 8px;
-  cursor: pointer;
   transition: all 0.3s ease;
 }
 
 .history-item:hover {
-  background-color: #4a4a4a;
-  transform: translateX(5px);
+  background-color: #3a3a3a;
 }
 
 .history-thumbnail {
+  position: relative;
   width: 80px;
   height: 60px;
   border-radius: 6px;
   overflow: hidden;
   flex-shrink: 0;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.history-thumbnail:hover {
+  transform: scale(1.05);
 }
 
 .history-thumbnail img {
@@ -1874,12 +2087,36 @@ main {
   object-fit: cover;
 }
 
+.play-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.history-thumbnail:hover .play-overlay {
+  opacity: 1;
+}
+
+.play-overlay span {
+  font-size: 24px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+}
+
 .history-info {
   flex: 1;
   min-width: 0;
+  cursor: pointer;
 }
 
-.history-id {
+.history-title {
   color: white;
   font-size: 14px;
   font-weight: 500;
@@ -1887,6 +2124,7 @@ main {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .history-time {
@@ -1895,25 +2133,79 @@ main {
   margin: 0;
 }
 
-.history-play-btn {
+.history-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-add-btn {
   background: linear-gradient(135deg, #4ecdc4 0%, #45b7aa 100%);
   border: none;
   color: white;
   padding: 8px;
-  border-radius: 50%;
-  width: 36px;
-  height: 36px;
+  border-radius: 8px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 18px;
   transition: all 0.3s ease;
+  flex-shrink: 0;
 }
 
-.history-play-btn:hover {
+.history-add-btn:hover {
   background: linear-gradient(135deg, #45b7aa 0%, #4ecdc4 100%);
   transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(78, 205, 196, 0.3);
+}
+
+.history-add-btn:active {
+  transform: scale(0.95);
+}
+
+.in-playlist-badge {
+  background: linear-gradient(135deg, #51cf66 0%, #40c057 100%);
+  color: white;
+  padding: 8px;
+  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: bold;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(81, 207, 102, 0.3);
+}
+
+.adding-spinner {
+  background: linear-gradient(135deg, #ffd43b 0%, #fab005 100%);
+  padding: 8px;
+  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.spinner-icon {
+  font-size: 18px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Scrollbar for history list */

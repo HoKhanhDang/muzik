@@ -10,6 +10,9 @@ A personal background music player that stores your YouTube videos in SQLite and
 - 🎮 **Full control** - Play, pause, skip, mute, and delete videos
 - 📱 **Modern UI** - Clean, responsive interface with dark theme
 - 🔄 **Auto-next** - Automatically plays the next video when current one ends
+- ⚡ **Instant Play** - Play any YouTube video instantly without adding to playlist
+- 📜 **Play History** - Track your instant play history with thumbnails and titles
+- ➕ **Add from History** - Easily add videos from history to your permanent playlist with full video information
 
 ## Setup Instructions
 
@@ -43,13 +46,27 @@ The Vue app will run on `http://localhost:5173`
 
 ## How to Use
 
-### Adding Videos
+### Instant Play Tab ⚡
+
+1. Enter a **YouTube URL** or **Video ID** in the input field
+2. Click **"▶️ Play Now"** to play instantly
+3. Videos played here are automatically added to your **History**
+4. Each history item shows:
+   - Thumbnail preview with play overlay
+   - Video title (auto-fetched from YouTube)
+   - Timestamp when played
+5. From History, you can:
+   - Click to replay the video
+   - Click **➕** button to add to permanent playlist with full details
+   - See **✓** badge if already in playlist
+
+### Playlist Tab 📋
 
 1. Click the **"+ Add Video"** button
 2. Enter either:
    - **YouTube URL**: `https://youtube.com/watch?v=XbLemOwzdxk`
    - **Video ID**: `XbLemOwzdxk`
-3. Optionally add a title and duration
+3. Optionally add a title and duration (or auto-fetch)
 4. Click **"Add Video"**
 
 ### Playing Music
@@ -65,6 +82,7 @@ The Vue app will run on `http://localhost:5173`
 - **Delete videos**: Click the 🗑️ button next to any video
 - **View all videos**: Your complete library is shown in the playlist
 - **Current track info**: See what's playing with title and video ID
+- **Clear history**: Click 🗑️ Clear in history section to remove all history
 
 ## Database Schema
 
