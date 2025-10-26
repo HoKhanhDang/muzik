@@ -38,7 +38,7 @@ if (dbType === 'postgresql') {
   db = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
-    max: 2, // Limit connections for serverless
+    max: 1, // Important for serverless - reduce connection count
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
   })
