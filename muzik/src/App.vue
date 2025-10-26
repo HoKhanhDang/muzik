@@ -236,39 +236,62 @@ window.onYouTubeIframeAPIReady = () => {
 const initializePlayer = () => {
   if (!videoIds.value.length) return
 
-  player.value = new YT.Player('player', {
-    height: '100%',
-    width: '100%',
-    videoId: videoIds.value[currentVideoIndex.value],
-    playerVars: {
-      autoplay: 1,
-      controls: 1, // Hide controls for cleaner look
-      loop: 0,
-      modestbranding: 0,
-      rel: 1,
-      showinfo: 1,
-    },
-    events: {
-      onReady: (event) => {
-        isPlayerReady.value = true
-        event.target.playVideo()
-        event.target.setVolume(volume.value)
+  try {
+    player.value = new YT.Player('player', {
+      height: '100%',
+      width: '100%',
+      videoId: videoIds.value[currentVideoIndex.value],
+      playerVars: {
+        autoplay: 0, // Don't autoplay in production (browser policy)
+        controls: 1,
+        loop: 0,
+        modestbranding: 1,
+        rel: 0,
+        enablejsapi: 1,
       },
-      onStateChange: (event) => {
-        // When video ends, play next video
-        if (event.data === YT.PlayerState.ENDED) {
-          playNextVideo()
-        }
+      events: {
+        onReady: (event) => {
+          console.log('Player is ready')
+          isPlayerReady.value = true
+          event.target.setVolume(volume.value)
+          // Don't auto-play - let user click play button
+          // event.target.playVideo() // Commented out for production compatibility
+        },
+        onStateChange: (event) => {
+          // Track playing state
+          if (event.data === YT.PlayerState.PLAYING) {
+            isPlaying.value = true
+          } else if (event.data === YT.PlayerState.PAUSED || event.data === YT.PlayerState.ENDED) {
+            isPlaying.value = false
+          }
+          
+          // When video ends, play next video
+          if (event.data === YT.PlayerState.ENDED) {
+            playNextVideo()
+          }
+        },
+        onError: (event) => {
+          console.error('YouTube player error:', event.data)
+          alert('Video cannot be played. Try another video.')
+        },
       },
-    },
-  })
+    })
+  } catch (error) {
+    console.error('Failed to initialize YouTube player:', error)
+    alert('Player initialization failed. Please refresh the page.')
+  }
 }
 
 const playNextVideo = () => {
   if (videoIds.value.length === 0) return
   currentVideoIndex.value = (currentVideoIndex.value + 1) % videoIds.value.length
   if (player.value && isPlayerReady.value) {
-    player.value.loadVideoById(videoIds.value[currentVideoIndex.value])
+    try {
+      player.value.loadVideoById(videoIds.value[currentVideoIndex.value])
+      player.value.playVideo()
+    } catch (error) {
+      console.error('Error loading next video:', error)
+    }
   }
 }
 
@@ -277,7 +300,12 @@ const playPreviousVideo = () => {
   currentVideoIndex.value =
     currentVideoIndex.value === 0 ? videoIds.value.length - 1 : currentVideoIndex.value - 1
   if (player.value && isPlayerReady.value) {
-    player.value.loadVideoById(videoIds.value[currentVideoIndex.value])
+    try {
+      player.value.loadVideoById(videoIds.value[currentVideoIndex.value])
+      player.value.playVideo()
+    } catch (error) {
+      console.error('Error loading previous video:', error)
+    }
   }
 }
 
@@ -285,7 +313,23 @@ const playVideoAtIndex = (index) => {
   if (videoIds.value.length === 0) return
   currentVideoIndex.value = index
   if (player.value && isPlayerReady.value) {
-    player.value.loadVideoById(videoIds.value[currentVideoIndex.value])
+    try {
+      player.value.loadVideoById(videoIds.value[currentVideoIndex.value])
+      player.value.playVideo()
+    } catch (error) {
+      console.error('Error loading video at index:', error)
+    }
+  }
+}
+
+// Add a manual play function for when autoplay fails
+const handlePlayClick = () => {
+  if (player.value && isPlayerReady.value) {
+    try {
+      player.value.playVideo()
+    } catch (error) {
+      console.error('Error playing video:', error)
+    }
   }
 }
 
@@ -448,6 +492,7 @@ const instantPlay = async () => {
     // Play instantly without adding to playlist
     if (player.value && isPlayerReady.value) {
       player.value.loadVideoById(videoId)
+      player.value.playVideo() // Now we can play because user clicked
     } else {
       // If player not ready, initialize with this video
       if (window.YT) {
@@ -456,33 +501,41 @@ const instantPlay = async () => {
           width: '100%',
           videoId: videoId,
           playerVars: {
-            autoplay: 1,
+            autoplay: 0, // Don't autoplay - production browser restrictions
             controls: 1,
             loop: 0,
             modestbranding: 1,
             rel: 0,
-            showinfo: 1
+            enablejsapi: 1
           },
           events: {
             onReady: (event) => {
+              console.log('Instant play player ready')
               isPlayerReady.value = true
-              event.target.playVideo()
               event.target.setVolume(volume.value)
+              // Auto-play only on user interaction
+              event.target.playVideo()
             },
             onStateChange: (event) => {
               if (event.data === YT.PlayerState.ENDED) {
                 // Don't auto-next for instant play
               }
+            },
+            onError: (event) => {
+              console.error('YouTube player error:', event.data)
+              alert('Video cannot be played. The video may be unavailable or blocked.')
             }
           }
         })
+      } else {
+        alert('YouTube player is not loaded yet. Please wait a moment.')
       }
     }
     
     instantPlayUrl.value = ''
   } catch (error) {
     console.error('Error playing video:', error)
-    alert('Could not play video')
+    alert('Could not play video: ' + error.message)
   }
 }
 
@@ -490,6 +543,9 @@ const instantPlay = async () => {
 const currentVideo = computed(() => {
   return videos.value[currentVideoIndex.value] || null
 })
+
+// Track if video is playing
+const isPlaying = ref(false)
 
 onMounted(async () => {
   // Load YouTube API
@@ -536,7 +592,13 @@ onMounted(async () => {
         <div class="spinner"></div>
         <p>Loading your playlist...</p>
       </div>
-      <div id="player" v-else-if="videoIds.length > 0"></div>
+      <div v-else-if="videoIds.length > 0" class="player-wrapper">
+        <div id="player"></div>
+        <!-- Play button overlay for when video is not playing -->
+        <div v-if="!isPlaying && isPlayerReady" class="play-overlay" @click="handlePlayClick">
+          <button class="play-overlay-btn">▶️ Play</button>
+        </div>
+      </div>
       <div v-else class="no-videos">
         <h2>No Videos Found</h2>
         <p>Add some videos to start playing!</p>
@@ -1693,5 +1755,53 @@ main {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+/* Player wrapper and play overlay */
+.player-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.play-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  cursor: pointer;
+  z-index: 10;
+  transition: opacity 0.3s ease;
+}
+
+.play-overlay:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+.play-overlay-btn {
+  background: linear-gradient(135deg, #4ecdc4 0%, #45b7aa 100%);
+  border: none;
+  padding: 20px 40px;
+  border-radius: 50px;
+  color: white;
+  font-size: 24px;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 8px 25px rgba(78, 205, 196, 0.4);
+  transition: all 0.3s ease;
+}
+
+.play-overlay-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 12px 35px rgba(78, 205, 196, 0.6);
+}
+
+.play-overlay-btn:active {
+  transform: scale(0.95);
 }
 </style>
