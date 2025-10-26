@@ -16,6 +16,7 @@ const activeTab = ref('playlist')
 const instantPlayUrl = ref('')
 const draggedIndex = ref(null)
 const draggedOverIndex = ref(null)
+const instantPlayHistory = ref([])
 
 // Form data for adding new videos
 const newVideo = ref({
@@ -494,6 +495,21 @@ const instantPlay = async () => {
       videoId = match[1]
     }
     
+    // Add to history (only if not already in history)
+    if (!instantPlayHistory.value.some(h => h.video_id === videoId)) {
+      const historyItem = {
+        video_id: videoId,
+        url: instantPlayUrl.value,
+        played_at: new Date().toISOString()
+      }
+      instantPlayHistory.value.unshift(historyItem)
+      
+      // Keep only last 50 items
+      if (instantPlayHistory.value.length > 50) {
+        instantPlayHistory.value = instantPlayHistory.value.slice(0, 50)
+      }
+    }
+    
     // Play instantly without adding to playlist
     if (player.value && isPlayerReady.value) {
       player.value.loadVideoById(videoId)
@@ -532,6 +548,18 @@ const instantPlay = async () => {
   } catch (error) {
     console.error('Error playing video:', error)
     alert('Could not play video')
+  }
+}
+
+const playFromHistory = (videoId) => {
+  if (player.value && isPlayerReady.value) {
+    player.value.loadVideoById(videoId)
+  }
+}
+
+const clearHistory = () => {
+  if (confirm('Clear all instant play history?')) {
+    instantPlayHistory.value = []
   }
 }
 
@@ -627,6 +655,33 @@ onMounted(async () => {
             <button @click="toggleMute" class="quick-btn">
               {{ isMuted ? '🔇' : '🔊' }} {{ isMuted ? 'Unmute' : 'Mute' }}
             </button>
+          </div>
+        </div>
+        
+        <!-- History Section -->
+        <div class="history-section" v-if="instantPlayHistory.length > 0">
+          <div class="history-header">
+            <h4>📜 History</h4>
+            <button @click="clearHistory" class="clear-history-btn">
+              🗑️ Clear
+            </button>
+          </div>
+          <div class="history-list">
+            <div 
+              v-for="(item, index) in instantPlayHistory" 
+              :key="index"
+              class="history-item"
+              @click="playFromHistory(item.video_id)"
+            >
+              <div class="history-thumbnail">
+                <img :src="`https://img.youtube.com/vi/${item.video_id}/mqdefault.jpg`" alt="Thumbnail" />
+              </div>
+              <div class="history-info">
+                <p class="history-id">{{ item.video_id }}</p>
+                <p class="history-time">{{ new Date(item.played_at).toLocaleString() }}</p>
+              </div>
+              <button class="history-play-btn">▶️</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1742,5 +1797,141 @@ main {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+/* History Section Styles */
+.history-section {
+  margin-top: 20px;
+  background-color: #3a3a3a;
+  border-radius: 8px;
+  padding: 15px;
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.history-header h4 {
+  color: #4ecdc4;
+  margin: 0;
+  font-size: 16px;
+}
+
+.clear-history-btn {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+  border: none;
+  color: white;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.3s ease;
+}
+
+.clear-history-btn:hover {
+  background: linear-gradient(135deg, #ee5a52 0%, #ff6b6b 100%);
+  transform: translateY(-2px);
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  background-color: #2a2a2a;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.history-item:hover {
+  background-color: #4a4a4a;
+  transform: translateX(5px);
+}
+
+.history-thumbnail {
+  width: 80px;
+  height: 60px;
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.history-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.history-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-id {
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  margin: 0 0 4px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-time {
+  color: #888;
+  font-size: 12px;
+  margin: 0;
+}
+
+.history-play-btn {
+  background: linear-gradient(135deg, #4ecdc4 0%, #45b7aa 100%);
+  border: none;
+  color: white;
+  padding: 8px;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+
+.history-play-btn:hover {
+  background: linear-gradient(135deg, #45b7aa 0%, #4ecdc4 100%);
+  transform: scale(1.1);
+}
+
+/* Scrollbar for history list */
+.history-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.history-list::-webkit-scrollbar-track {
+  background: #2a2a2a;
+  border-radius: 3px;
+}
+
+.history-list::-webkit-scrollbar-thumb {
+  background: #4a4a4a;
+  border-radius: 3px;
+}
+
+.history-list::-webkit-scrollbar-thumb:hover {
+  background: #6a6a6a;
 }
 </style>
