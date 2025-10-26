@@ -1,0 +1,5 @@
+node_modules/
+videos.db
+.env
+*.log
+
