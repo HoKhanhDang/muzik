@@ -29,6 +29,9 @@ const newVideo = ref({
 // API functions
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 
+// Track YouTube API readiness
+const youtubeApiReady = ref(false)
+
 const fetchVideos = async () => {
   try {
     loading.value = true
@@ -37,14 +40,22 @@ const fetchVideos = async () => {
     videos.value = data
     videoIds.value = data.map((video) => video.video_id)
 
-    // Initialize player if we have videos
-    if (videoIds.value.length > 0 && window.YT) {
-      initializePlayer()
-    }
+    // Check if we can initialize player now
+    checkAndInitializePlayer()
   } catch (error) {
     console.error('Error fetching videos:', error)
+    // Allow instant play even if fetch fails
+    checkAndInitializePlayer()
   } finally {
     loading.value = false
+  }
+}
+
+// Check if both YouTube API and videos are ready, then initialize
+const checkAndInitializePlayer = () => {
+  if (youtubeApiReady.value && window.YT && videoIds.value.length > 0 && !player.value) {
+    console.log('Initializing player with', videoIds.value.length, 'videos')
+    initializePlayer()
   }
 }
 
@@ -217,9 +228,9 @@ const resetForm = () => {
 
 // YouTube API callback
 window.onYouTubeIframeAPIReady = () => {
-  if (videoIds.value.length > 0) {
-    initializePlayer()
-  }
+  console.log('YouTube API is now ready')
+  youtubeApiReady.value = true
+  checkAndInitializePlayer()
 }
 
 const initializePlayer = () => {
@@ -487,6 +498,9 @@ onMounted(async () => {
     tag.src = 'https://www.youtube.com/iframe_api'
     const firstScriptTag = document.getElementsByTagName('script')[0]
     firstScriptTag.parentNode.insertBefore(tag, firstScriptTag)
+  } else {
+    // YouTube API already loaded
+    youtubeApiReady.value = true
   }
 
   // Fetch videos from database
@@ -518,7 +532,11 @@ onMounted(async () => {
   </header>
   <main>
     <div id="video-container">
-      <div id="player" v-if="videoIds.length > 0"></div>
+      <div v-if="loading && videoIds.length === 0" class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading your playlist...</p>
+      </div>
+      <div id="player" v-else-if="videoIds.length > 0"></div>
       <div v-else class="no-videos">
         <h2>No Videos Found</h2>
         <p>Add some videos to start playing!</p>
@@ -1648,5 +1666,32 @@ main {
 
 #list-container::-webkit-scrollbar-thumb:hover {
   background: #6a6a6a;
+}
+
+/* Loading state */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #888;
+  font-size: 18px;
+  padding: 40px;
+}
+
+.spinner {
+  border: 4px solid rgba(255, 255, 255, 0.1);
+  border-top: 4px solid #4ecdc4;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 20px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 </style>
