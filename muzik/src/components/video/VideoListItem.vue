@@ -63,8 +63,8 @@ watch(
     @drop="$emit('drop', $event, index)"
   >
     <div class="video-item">
-      <div class="drag-handle">⋮⋮</div>
-      <div class="video-thumbnail">
+      <div v-if="!isCompact" class="drag-handle">⋮⋮</div>
+      <div v-if="!isCompact" class="video-thumbnail">
         <img
           v-if="getThumbnailUrl"
           :src="getThumbnailUrl"
@@ -76,7 +76,7 @@ watch(
       <div class="video-info">
         <span class="video-title">{{ video.title }}</span>
       </div>
-      <div class="video-actions">
+      <div v-if="!isCompact" class="video-actions">
         <button
           @click.stop="$emit('add-to-playlist', video)"
           class="add-to-playlist-btn"
@@ -172,6 +172,12 @@ li:hover .drag-handle {
   min-height: 60px;
 }
 
+li.compact .video-item {
+  padding: 8px 12px;
+  min-height: auto;
+  gap: 0;
+}
+
 .video-thumbnail {
   flex-shrink: 0;
   width: 60px;
@@ -209,10 +215,6 @@ li:hover .drag-handle {
   display: none;
 }
 
-li.compact .video-item {
-  padding: 8px 12px 8px 30px;
-  min-height: 48px;
-}
 
 li.compact .video-thumbnail {
   width: 60px;
@@ -238,13 +240,11 @@ li.compact .placeholder-thumbnail {
 }
 
 li.compact .video-info {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
   flex: 1;
   overflow: hidden;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  min-width: 0;
 }
 
 li.compact .video-info::-webkit-scrollbar {
@@ -267,6 +267,8 @@ li.compact .video-title {
   flex: 1;
   min-width: 0;
   max-width: 100%;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .video-actions {
@@ -297,7 +299,7 @@ li:hover .video-actions {
   }
 
   li.compact .video-item {
-    padding: 6px 10px 6px 28px;
+    padding: 6px 10px;
   }
 
   .video-thumbnail {
@@ -343,8 +345,8 @@ li:hover .video-actions {
   }
 
   li.compact .video-item {
-    padding: 6px 8px 6px 26px;
-    min-height: 44px;
+    padding: 6px 8px;
+    min-height: auto;
   }
 
   .video-thumbnail {
