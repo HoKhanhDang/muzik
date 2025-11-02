@@ -76,5 +76,24 @@ export const videoService = {
     const params = userId ? { user_id: userId } : {}
     return apiClient.get(`${API_ENDPOINTS.VIDEOS}/ids`, params)
   },
+
+  /**
+   * Tìm kiếm video trên YouTube
+   * @param {string} query - Từ khóa tìm kiếm
+   * @param {number} maxResults - Số kết quả tối đa (default: 20)
+   * @returns {Promise<Array>} Danh sách video
+   */
+  searchYouTube: async (query, maxResults = 20) => {
+    const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
+    const response = await fetch(`${apiBase}/proxy/youtube-search?q=${encodeURIComponent(query)}&maxResults=${maxResults}`)
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Search failed' }))
+      throw new Error(error.message || error.error || 'Search failed')
+    }
+    
+    const data = await response.json()
+    return data.videos || []
+  },
 }
 

@@ -330,15 +330,17 @@ onMounted(() => {
 <template>
   <div class="playlist-detail">
     <div class="detail-header">
-      <div class="playlist-info-header">
-        <div class="playlist-icon-large">{{ playlist?.type === 'film' ? '🎬' : '🎥' }}</div>
-        <div>
-          <h3>{{ playlist?.name || 'Unnamed Playlist' }}</h3>
-          <p v-if="playlist?.description" class="playlist-description-text">{{ playlist.description }}</p>
-          <div class="playlist-stats">
-            <span class="stat">{{ items.length }} items</span>
-            <span class="stat-divider">•</span>
-            <span class="stat">{{ playlist?.type === 'film' ? 'Film' : 'Video' }} Playlist</span>
+      <div class="playlist-info-section">
+        <div class="playlist-info-header">
+          <div class="playlist-icon-large">{{ playlist?.type === 'film' ? '🎬' : '🎥' }}</div>
+          <div>
+            <h3>{{ playlist?.name || 'Unnamed Playlist' }}</h3>
+            <p v-if="playlist?.description" class="playlist-description-text">{{ playlist.description }}</p>
+            <div class="playlist-stats">
+              <span class="stat">{{ items.length }} items</span>
+              <span class="stat-divider">•</span>
+              <span class="stat">{{ playlist?.type === 'film' ? 'Film' : 'Video' }} Playlist</span>
+            </div>
           </div>
         </div>
       </div>
@@ -456,38 +458,59 @@ onMounted(() => {
 }
 
 .detail-header {
-  background: rgba(42, 42, 42, 0.6);
-  border: 1px solid rgba(78, 205, 196, 0.2);
-  border-radius: 12px;
-  padding: 20px;
+  background: linear-gradient(135deg, rgba(42, 42, 42, 0.95), rgba(58, 58, 58, 0.95));
+  border: 1px solid rgba(78, 205, 196, 0.3);
+  border-radius: 16px;
+  padding: 20px 24px;
   margin-bottom: 20px;
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 20px;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.playlist-info-section {
+  width: 100%;
 }
 
 .playlist-info-header {
   display: flex;
   gap: 16px;
-  flex: 1;
+  width: 100%;
+  min-width: 0;
 }
 
 .playlist-icon-large {
   font-size: 48px;
   flex-shrink: 0;
+  line-height: 1;
+}
+
+.playlist-info-header > div {
+  flex: 1;
+  min-width: 0;
 }
 
 .playlist-info-header h3 {
   color: #fff;
-  margin: 0 0 8px 0;
-  font-size: 22px;
+  margin: 0 0 6px 0;
+  font-size: 24px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .playlist-description-text {
   color: #aaa;
-  margin: 0 0 12px 0;
+  margin: 0 0 10px 0;
   font-size: 14px;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .playlist-stats {
@@ -495,71 +518,201 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   font-size: 13px;
+  flex-wrap: wrap;
 }
 
 .stat {
-  color: #888;
+  color: #bbb;
+  font-weight: 500;
 }
 
 .stat-divider {
   color: #666;
+  margin: 0 2px;
 }
 
 .header-actions {
   display: flex;
-  gap: 10px;
+  gap: 8px;
+  width: 100%;
+  flex-wrap: wrap;
+  padding-top: 12px;
+  border-top: 1px solid rgba(78, 205, 196, 0.2);
 }
 
 .play-all-btn,
 .add-item-btn,
 .delete-playlist-btn {
-  padding: 10px 16px;
+  padding: 8px 14px;
   border-radius: 8px;
   border: none;
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  transition: all 0.3s ease;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  position: relative;
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+}
+
+.play-all-btn::before,
+.add-item-btn::before,
+.delete-playlist-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.play-all-btn:hover::before,
+.add-item-btn:hover::before,
+.delete-playlist-btn:hover::before {
+  left: 100%;
 }
 
 .play-all-btn {
-  background: linear-gradient(135deg, #ff6b6b 0%, #ff5252 100%);
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
   color: white;
-  box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+  box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
 }
 
 .play-all-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #ff5252 0%, #ff6b6b 100%);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(255, 107, 107, 0.4);
+  background: linear-gradient(135deg, #ee5a52 0%, #ff6b6b 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 12px rgba(255, 107, 107, 0.4);
+}
+
+.play-all-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(255, 107, 107, 0.3);
 }
 
 .play-all-btn:disabled {
-  background: #666;
+  background: linear-gradient(135deg, #555 0%, #444 100%);
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: 0.6;
+  box-shadow: none;
 }
 
 .add-item-btn {
   background: linear-gradient(135deg, #4ecdc4 0%, #45b7aa 100%);
   color: white;
-  box-shadow: 0 4px 12px rgba(78, 205, 196, 0.3);
+  box-shadow: 0 2px 8px rgba(78, 205, 196, 0.3);
 }
 
 .add-item-btn:hover {
   background: linear-gradient(135deg, #45b7aa 0%, #4ecdc4 100%);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 12px rgba(78, 205, 196, 0.4);
+}
+
+.add-item-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(78, 205, 196, 0.3);
 }
 
 .delete-playlist-btn {
-  background: rgba(255, 107, 107, 0.2);
+  background: rgba(255, 107, 107, 0.15);
   border: 1px solid rgba(255, 107, 107, 0.4);
   color: #ff6b6b;
+  box-shadow: 0 1px 4px rgba(255, 107, 107, 0.2);
 }
 
 .delete-playlist-btn:hover {
-  background: rgba(255, 107, 107, 0.3);
+  background: rgba(255, 107, 107, 0.25);
   border-color: #ff6b6b;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
+  color: #ff5252;
+}
+
+.delete-playlist-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(255, 107, 107, 0.2);
+}
+
+/* Tablet (768px - 1023px) */
+@media screen and (min-width: 768px) and (max-width: 1023px) {
+  .detail-header {
+    padding: 18px 20px;
+    gap: 14px;
+  }
+
+  .playlist-icon-large {
+    font-size: 42px;
+  }
+
+  .playlist-info-header h3 {
+    font-size: 22px;
+  }
+
+  .header-actions {
+    gap: 8px;
+    padding-top: 12px;
+  }
+
+  .play-all-btn,
+  .add-item-btn,
+  .delete-playlist-btn {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+}
+
+/* Mobile (< 768px) */
+@media screen and (max-width: 767px) {
+  .detail-header {
+    padding: 16px;
+    gap: 12px;
+    border-radius: 12px;
+  }
+
+  .playlist-info-header {
+    gap: 12px;
+  }
+
+  .playlist-icon-large {
+    font-size: 36px;
+  }
+
+  .playlist-info-header h3 {
+    font-size: 20px;
+    margin-bottom: 4px;
+  }
+
+  .playlist-description-text {
+    font-size: 13px;
+    margin-bottom: 8px;
+  }
+
+  .playlist-stats {
+    font-size: 12px;
+    gap: 6px;
+  }
+
+  .header-actions {
+    gap: 6px;
+    padding-top: 10px;
+    flex-direction: column;
+  }
+
+  .play-all-btn,
+  .add-item-btn,
+  .delete-playlist-btn {
+    padding: 8px 12px;
+    font-size: 12px;
+    width: 100%;
+  }
 }
 
 .add-items-section {

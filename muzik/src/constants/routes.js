@@ -18,7 +18,7 @@ export const ROUTE_CONFIG = {
     label: 'YouTube',
     icon: '🎬',
     path: '/youtube',
-    component: 'InstantPlayTab',
+    component: 'YouTubeTab',
   },
   [ROUTES.MOVIES]: {
     id: ROUTES.MOVIES,

@@ -1,5 +1,7 @@
 <script setup>
-defineProps({
+import { ref, computed, watch } from 'vue'
+
+const props = defineProps({
   video: Object,
   index: Number,
   currentVideoIndex: Number,
@@ -19,6 +21,29 @@ defineEmits([
   'drag-leave',
   'drop',
 ])
+
+const thumbnailError = ref(false)
+
+const getThumbnailUrl = computed(() => {
+  if (props.video?.thumbnail_url) {
+    return props.video.thumbnail_url
+  }
+  if (props.video?.video_id) {
+    return `https://img.youtube.com/vi/${props.video.video_id}/mqdefault.jpg`
+  }
+  return null
+})
+
+const handleThumbnailError = () => {
+  thumbnailError.value = true
+}
+
+watch(
+  () => props.video?.video_id,
+  () => {
+    thumbnailError.value = false
+  },
+)
 </script>
 
 <template>
@@ -39,10 +64,17 @@ defineEmits([
   >
     <div class="video-item">
       <div class="drag-handle">⋮⋮</div>
+      <div class="video-thumbnail">
+        <img
+          v-if="getThumbnailUrl"
+          :src="getThumbnailUrl"
+          :alt="video.title"
+          @error="handleThumbnailError"
+        />
+        <div v-show="!getThumbnailUrl || thumbnailError" class="placeholder-thumbnail">🎥</div>
+      </div>
       <div class="video-info">
         <span class="video-title">{{ video.title }}</span>
-        <span v-if="!isCompact" class="video-id">{{ video.video_id }}</span>
-        <span v-else class="video-id-inline">{{ video.video_id }}</span>
       </div>
       <div class="video-actions">
         <button
@@ -140,6 +172,39 @@ li:hover .drag-handle {
   min-height: 60px;
 }
 
+.video-thumbnail {
+  flex-shrink: 0;
+  width: 60px;
+  height: 40px;
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: #2a2a2a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.video-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.placeholder-thumbnail {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: #666;
+  background-color: #1a1a1a;
+}
+
+.video-thumbnail img + .placeholder-thumbnail {
+  display: none;
+}
+
 .video-item::-webkit-scrollbar {
   display: none;
 }
@@ -147,6 +212,15 @@ li:hover .drag-handle {
 li.compact .video-item {
   padding: 8px 12px 8px 30px;
   min-height: 48px;
+}
+
+li.compact .video-thumbnail {
+  width: 60px;
+  height: 45px;
+}
+
+li.compact .placeholder-thumbnail {
+  font-size: 18px;
 }
 
 .video-info {
@@ -195,28 +269,6 @@ li.compact .video-title {
   max-width: 100%;
 }
 
-.video-id {
-  display: block;
-  font-size: 12px;
-  color: #888;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.video-id-inline {
-  display: inline-block;
-  font-size: 12px;
-  color: #888;
-  margin-left: 8px;
-  flex-shrink: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 120px;
-}
-
 .video-actions {
   display: flex;
   gap: 6px;
@@ -243,29 +295,35 @@ li:hover .video-actions {
     padding: 10px 10px 10px 28px;
     gap: 10px;
   }
-  
+
   li.compact .video-item {
     padding: 6px 10px 6px 28px;
   }
-  
+
+  .video-thumbnail {
+    width: 70px;
+    height: 52px;
+  }
+
+  li.compact .video-thumbnail {
+    width: 55px;
+    height: 41px;
+  }
+
   .video-info {
     flex: 1 1 auto;
     min-width: 200px;
   }
-  
+
   .video-title {
     font-size: 14px;
     line-height: 1.4;
   }
-  
-  .video-id {
-    font-size: 11px;
-  }
-  
+
   .video-actions {
     gap: 4px;
   }
-  
+
   .add-to-playlist-btn,
   .move-to-top-btn,
   .delete-btn {
@@ -280,29 +338,38 @@ li:hover .video-actions {
 @media (max-width: 767px) {
   .video-item {
     padding: 8px 8px 8px 26px;
-    gap: 6px;
+    gap: 8px;
     min-height: 56px;
   }
-  
+
   li.compact .video-item {
     padding: 6px 8px 6px 26px;
     min-height: 44px;
   }
-  
+
+  .video-thumbnail {
+    width: 60px;
+    height: 45px;
+  }
+
+  li.compact .video-thumbnail {
+    width: 50px;
+    height: 37px;
+  }
+
+  .placeholder-thumbnail {
+    font-size: 20px;
+  }
+
+  li.compact .placeholder-thumbnail {
+    font-size: 16px;
+  }
+
   .video-title {
     font-size: 12px;
     margin-bottom: 2px;
   }
-  
-  .video-id {
-    font-size: 10px;
-  }
-  
-  .video-id-inline {
-    font-size: 10px;
-    max-width: 80px;
-  }
-  
+
   .add-to-playlist-btn,
   .move-to-top-btn,
   .delete-btn {
@@ -311,7 +378,7 @@ li:hover .video-actions {
     padding: 4px 6px;
     font-size: 10px;
   }
-  
+
   .drag-handle {
     left: 6px;
     font-size: 11px;

@@ -186,9 +186,10 @@ const handleVideoAdded = (data) => {
 .tab-content {
   animation: fadeIn 0.3s ease-in-out;
   flex: 1;
-  overflow-y: auto;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 .view-switcher {
@@ -225,12 +226,41 @@ const handleVideoAdded = (data) => {
   box-shadow: 0 4px 12px rgba(78, 205, 196, 0.3);
 }
 
-.videos-view,
 .playlists-view {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0;
+}
+
+.videos-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #4a4a4a #2a2a2a;
+}
+
+.videos-view::-webkit-scrollbar {
+  width: 8px;
+}
+
+.videos-view::-webkit-scrollbar-track {
+  background: #2a2a2a;
+  border-radius: 4px;
+}
+
+.videos-view::-webkit-scrollbar-thumb {
+  background: #4a4a4a;
+  border-radius: 4px;
+}
+
+.videos-view::-webkit-scrollbar-thumb:hover {
+  background: #6a6a6a;
 }
 
 @keyframes fadeIn {
@@ -276,15 +306,8 @@ const handleVideoAdded = (data) => {
 }
 
 .playlist {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.playlist::-webkit-scrollbar {
-  display: none;
+  flex-shrink: 0;
+  overflow: visible;
 }
 
 .playlist h3 {

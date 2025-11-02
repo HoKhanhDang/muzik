@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import AppHeader from './components/layout/AppHeader.vue'
 import VideoPlayer from './components/video/VideoPlayer.vue'
 import InstantPlayTab from './components/video/InstantPlayTab.vue'
+import YouTubeTab from './components/video/YouTubeTab.vue'
 import PlaylistTab from './components/playlist/PlaylistTab.vue'
 import MoviesTab from './components/video/MoviesTab.vue'
 import LoginPage from './components/auth/LoginPage.vue'
@@ -154,6 +155,19 @@ const addVideo = async () => {
         videoId = match[1]
         newVideo.value.video_id = videoId
       }
+    }
+
+    // Check if video ID is provided
+    if (!videoId) {
+      alert('Please provide a valid YouTube URL or Video ID')
+      return
+    }
+
+    // Check if video already exists in the list
+    const videoExists = videos.value.some((video) => video.video_id === videoId)
+    if (videoExists) {
+      alert('This video is already in your playlist!')
+      return
     }
 
     // If no title provided, try to fetch it automatically
@@ -1282,8 +1296,26 @@ onUnmounted(() => {
     <VideoPlayer :loading="loading" :video-ids="videoIds" :show-sidebar="showSidebar" />
 
     <div v-show="showSidebar" id="list-container">
+      <YouTubeTab
+        v-if="activeTab === ROUTES.YOUTUBE"
+        :instant-play-url="instantPlayUrl"
+        :video-ids="videoIds"
+        :is-muted="isMuted"
+        :instant-play-history="instantPlayHistory"
+        :adding-to-playlist="addingToPlaylist"
+        :is-in-playlist="isInPlaylist"
+        @update:instant-play-url="instantPlayUrl = $event"
+        @instant-play="instantPlay"
+        @play-previous="playPreviousVideo"
+        @play-next="playNextVideo"
+        @toggle-mute="toggleMute"
+        @play-from-history="playFromHistory"
+        @clear-history="clearHistory"
+        @add-from-history="addFromHistory"
+      />
+
       <InstantPlayTab
-        v-if="activeTab === ROUTES.YOUTUBE || activeTab === ROUTES.INSTANT_PLAY"
+        v-if="activeTab === ROUTES.INSTANT_PLAY"
         :instant-play-url="instantPlayUrl"
         :video-ids="videoIds"
         :is-muted="isMuted"
@@ -1432,11 +1464,12 @@ main {
   background-color: #2a2a2a;
   border-radius: 10px;
   padding: 15px;
-  overflow-y: auto;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   transition: all 0.3s ease;
   min-width: 320px;
+  min-height: 0;
 }
 
 /* Large Desktop (>= 1440px) */
