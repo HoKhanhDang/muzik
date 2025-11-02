@@ -1,5 +1,14 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import AppHeader from './components/layout/AppHeader.vue'
+import VideoPlayer from './components/video/VideoPlayer.vue'
+import InstantPlayTab from './components/video/InstantPlayTab.vue'
+import PlaylistTab from './components/playlist/PlaylistTab.vue'
+import MoviesTab from './components/video/MoviesTab.vue'
+import LoginPage from './components/auth/LoginPage.vue'
+import { DEFAULT_ROUTE, ROUTES, isValidRoute } from './constants/routes.js'
+import { videoService, authService, playlistService } from './services/index.js'
+import { eventBus } from './utils/eventBus.js'
 
 // Database integration
 const videos = ref([])
@@ -12,13 +21,16 @@ const loading = ref(false)
 const volume = ref(50)
 const isMuted = ref(false)
 const showVolumeSlider = ref(false)
-const activeTab = ref('playlist')
+const activeTab = ref(DEFAULT_ROUTE)
 const instantPlayUrl = ref('')
 const draggedIndex = ref(null)
 const draggedOverIndex = ref(null)
 const instantPlayHistory = ref([])
 const addingToPlaylist = ref(null) // Track which video is being added
 const showSidebar = ref(true) // Toggle sidebar visibility
+const isAuthenticated = ref(false)
+const currentUser = ref(null)
+const showProfileModal = ref(false)
 
 // Form data for adding new videos
 const newVideo = ref({
@@ -29,24 +41,20 @@ const newVideo = ref({
   duration: '',
 })
 
-// API functions
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
-
 // Track YouTube API readiness
 const youtubeApiReady = ref(false)
 
 const fetchVideos = async () => {
   try {
     loading.value = true
-    const response = await fetch(`${API_BASE}/videos`)
-    const data = await response.json()
+    const data = await videoService.getAll()
     videos.value = data
     videoIds.value = data.map((video) => video.video_id)
 
     // Check if we can initialize player now
     checkAndInitializePlayer()
   } catch (error) {
-    console.error('Error fetching videos:', error)
+    console.error('Error fetching videos:', error.message)
     // Allow instant play even if fetch fails
     checkAndInitializePlayer()
   } finally {
@@ -140,7 +148,7 @@ const addVideo = async () => {
     let videoId = newVideo.value.video_id
     if (newVideo.value.youtube_url && !videoId) {
       const regex =
-        /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/
+        /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/
       const match = newVideo.value.youtube_url.match(regex)
       if (match) {
         videoId = match[1]
@@ -157,25 +165,13 @@ const addVideo = async () => {
       }
     }
 
-    const response = await fetch(`${API_BASE}/videos`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(newVideo.value),
-    })
-
-    if (response.ok) {
-      await fetchVideos() // Refresh the list
-      resetForm()
-      showAddForm.value = false
-    } else {
-      const error = await response.json()
-      alert(`Error: ${error.error}`)
-    }
+    await videoService.create(newVideo.value)
+    await fetchVideos() // Refresh the list
+    resetForm()
+    showAddForm.value = false
   } catch (error) {
     console.error('Error adding video:', error)
-    alert('Error adding video')
+    alert(`Error: ${error.message || 'Error adding video'}`)
   } finally {
     loading.value = false
   }
@@ -186,19 +182,11 @@ const deleteVideo = async (id) => {
 
   try {
     loading.value = true
-    const response = await fetch(`${API_BASE}/videos/${id}`, {
-      method: 'DELETE',
-    })
-
-    if (response.ok) {
-      await fetchVideos() // Refresh the list
-    } else {
-      const error = await response.json()
-      alert(`Error: ${error.error}`)
-    }
+    await videoService.delete(id)
+    await fetchVideos() // Refresh the list
   } catch (error) {
     console.error('Error deleting video:', error)
-    alert('Error deleting video')
+    alert(`Error: ${error.message || 'Error deleting video'}`)
   } finally {
     loading.value = false
   }
@@ -217,7 +205,7 @@ const fetchVideoDetails = async () => {
     let videoId = newVideo.value.video_id
     if (newVideo.value.youtube_url && !videoId) {
       const regex =
-        /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/
+        /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/
       const match = newVideo.value.youtube_url.match(regex)
       if (match) {
         videoId = match[1]
@@ -275,6 +263,20 @@ const initializePlayer = () => {
     return
   }
 
+  // Destroy existing player if it exists
+  if (player.value && typeof player.value.destroy === 'function') {
+    try {
+      console.log('Destroying existing player before reinitializing...')
+      player.value.destroy()
+      player.value = null
+      isPlayerReady.value = false
+    } catch (error) {
+      console.warn('Error destroying existing player:', error)
+      player.value = null
+      isPlayerReady.value = false
+    }
+  }
+
   console.log('Initializing YouTube player with video:', videoId)
 
   try {
@@ -297,9 +299,11 @@ const initializePlayer = () => {
           isPlayerReady.value = true
           event.target.setVolume(volume.value)
           // Try to play - will fail gracefully if autoplay blocked
-          event.target.playVideo().catch((err) => {
-            console.log('Autoplay blocked, user needs to click play')
-          })
+          try {
+            event.target.playVideo()
+          } catch (error) {
+            console.log('Autoplay blocked, user needs to click play:', error)
+          }
         },
         onStateChange: (event) => {
           // When video ends, play next video
@@ -325,8 +329,18 @@ const initializePlayer = () => {
 const playNextVideo = () => {
   if (videoIds.value.length === 0) return
   currentVideoIndex.value = (currentVideoIndex.value + 1) % videoIds.value.length
-  if (player.value && isPlayerReady.value) {
-    player.value.loadVideoById(videoIds.value[currentVideoIndex.value])
+  
+  if (player.value && isPlayerReady.value && typeof player.value.loadVideoById === 'function') {
+    try {
+      player.value.loadVideoById(videoIds.value[currentVideoIndex.value])
+      console.log('Playing next video:', videoIds.value[currentVideoIndex.value])
+    } catch (error) {
+      console.error('Error loading next video:', error)
+      initializePlayer()
+    }
+  } else {
+    console.warn('Player not ready for next video, reinitializing...')
+    initializePlayer()
   }
 }
 
@@ -334,16 +348,45 @@ const playPreviousVideo = () => {
   if (videoIds.value.length === 0) return
   currentVideoIndex.value =
     currentVideoIndex.value === 0 ? videoIds.value.length - 1 : currentVideoIndex.value - 1
-  if (player.value && isPlayerReady.value) {
-    player.value.loadVideoById(videoIds.value[currentVideoIndex.value])
+  
+  if (player.value && isPlayerReady.value && typeof player.value.loadVideoById === 'function') {
+    try {
+      player.value.loadVideoById(videoIds.value[currentVideoIndex.value])
+      console.log('Playing previous video:', videoIds.value[currentVideoIndex.value])
+    } catch (error) {
+      console.error('Error loading previous video:', error)
+      initializePlayer()
+    }
+  } else {
+    console.warn('Player not ready for previous video, reinitializing...')
+    initializePlayer()
   }
 }
 
 const playVideoAtIndex = (index) => {
   if (videoIds.value.length === 0) return
   currentVideoIndex.value = index
-  if (player.value && isPlayerReady.value) {
-    player.value.loadVideoById(videoIds.value[currentVideoIndex.value])
+  
+  // Validate player exists and has the method
+  if (player.value && isPlayerReady.value && typeof player.value.loadVideoById === 'function') {
+    try {
+      player.value.loadVideoById(videoIds.value[currentVideoIndex.value])
+      console.log('Loading video at index:', index, 'videoId:', videoIds.value[currentVideoIndex.value])
+    } catch (error) {
+      console.error('Error loading video:', error)
+      // Try to reinitialize player
+      initializePlayer()
+    }
+  } else {
+    console.warn('Player not ready, attempting to initialize...', {
+      hasPlayer: !!player.value,
+      isReady: isPlayerReady.value,
+      hasMethod: player.value ? typeof player.value.loadVideoById : 'no player'
+    })
+    // Try to initialize player if not ready
+    if (window.YT && window.YT.Player) {
+      initializePlayer()
+    }
   }
 }
 
@@ -498,7 +541,7 @@ const instantPlay = async () => {
     // Extract video ID from URL
     let videoId = instantPlayUrl.value
     const regex =
-      /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/
+      /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/
     const match = instantPlayUrl.value.match(regex)
     if (match) {
       videoId = match[1]
@@ -535,7 +578,7 @@ const instantPlay = async () => {
     } else {
       // If player not ready, initialize with this video
       if (window.YT) {
-        player.value = new YT.Player('player', {
+        player.value = new window.YT.Player('player', {
           height: '100%',
           width: '100%',
           videoId: videoId,
@@ -554,7 +597,7 @@ const instantPlay = async () => {
               event.target.setVolume(volume.value)
             },
             onStateChange: (event) => {
-              if (event.data === YT.PlayerState.ENDED) {
+              if (event.data === window.YT.PlayerState.ENDED) {
                 // Don't auto-next for instant play
               }
             },
@@ -573,6 +616,406 @@ const instantPlay = async () => {
 const playFromHistory = (videoId) => {
   if (player.value && isPlayerReady.value) {
     player.value.loadVideoById(videoId)
+  }
+}
+
+const playPlaylistItem = (data) => {
+  console.log('Playing playlist item:', data)
+  
+  if (!data || !data.videoId) {
+    alert('Invalid video data')
+    return
+  }
+  
+  const { videoId, title, playlist } = data
+  
+  // If playlist data is provided, set up playlist playback
+  if (playlist && playlist.videoIds && playlist.videoIds.length > 0) {
+    console.log('Setting up playlist playback:', playlist)
+    
+    // Update videos and videoIds with playlist data
+    videos.value = playlist.videoIds.map((vid, idx) => ({
+      id: idx,
+      video_id: vid,
+      title: playlist.titles[idx] || `Playlist Item ${idx + 1}`,
+    }))
+    videoIds.value = playlist.videoIds
+    currentVideoIndex.value = playlist.currentIndex
+    
+    // Switch to playlist tab if not already there
+    if (activeTab.value !== ROUTES.PLAYLIST) {
+      activeTab.value = ROUTES.PLAYLIST
+    }
+    
+    // Play the video
+    const playVideo = () => {
+      if (player.value && isPlayerReady.value) {
+        console.log('Using existing player, loading video:', videoId)
+        player.value.loadVideoById(videoId)
+        player.value.playVideo().catch(() => {
+          console.log('Autoplay blocked, user needs to click play')
+        })
+      } else {
+        // Initialize new player
+        console.log('Initializing new player with video:', videoId)
+        initPlaylistPlayer(videoId)
+      }
+    }
+    
+    // Wait for YouTube API and DOM
+    const initPlayer = () => {
+      if (window.YT && window.YT.Player) {
+        const playerElement = document.getElementById('player')
+        if (playerElement) {
+          playVideo()
+        } else {
+          setTimeout(initPlayer, 100)
+        }
+      } else {
+        setTimeout(initPlayer, 100)
+      }
+    }
+    initPlayer()
+  } else {
+    // Just play single video without playlist
+    if (player.value && isPlayerReady.value) {
+      player.value.loadVideoById(videoId)
+    } else {
+      if (window.YT && window.YT.Player) {
+        player.value = new window.YT.Player('player', {
+          height: '100%',
+          width: '100%',
+          videoId: videoId,
+          playerVars: {
+            autoplay: 1,
+            controls: 1,
+            loop: 0,
+            modestbranding: 1,
+            rel: 0,
+            showinfo: 1,
+            enablejsapi: 1,
+          },
+          events: {
+            onReady: (event) => {
+              isPlayerReady.value = true
+              event.target.setVolume(volume.value)
+              event.target.playVideo().catch(() => {
+                console.log('Autoplay blocked, user needs to click play')
+              })
+            },
+            onStateChange: (event) => {
+              if (event.data === window.YT.PlayerState.ENDED) {
+                // Don't auto-next for single video
+              }
+            },
+          },
+        })
+      }
+    }
+  }
+}
+
+const initPlaylistPlayer = (videoId) => {
+  try {
+    // Destroy existing player if it exists
+    if (player.value) {
+      try {
+        player.value.destroy?.()
+      } catch (e) {
+        console.warn('Error destroying old player:', e)
+      }
+      player.value = null
+      isPlayerReady.value = false
+    }
+    
+    // Create new player
+    player.value = new window.YT.Player('player', {
+      height: '100%',
+      width: '100%',
+      videoId: videoId,
+      playerVars: {
+        autoplay: 1,
+        controls: 1,
+        loop: 0,
+        modestbranding: 0,
+        rel: 0,
+        showinfo: 1,
+        enablejsapi: 1,
+      },
+      events: {
+        onReady: (event) => {
+          console.log('Playlist player ready!')
+          isPlayerReady.value = true
+          event.target.setVolume(volume.value)
+          event.target.playVideo().catch(() => {
+            console.log('Autoplay blocked, user needs to click play')
+          })
+        },
+        onStateChange: (event) => {
+          // When video ends, play next video
+          if (event.data === window.YT.PlayerState.ENDED) {
+            playNextVideo()
+          }
+        },
+        onError: (event) => {
+          console.error('Player error:', event.data)
+        },
+      },
+    })
+  } catch (error) {
+    console.error('Failed to create player:', error)
+    alert('Failed to initialize video player. Please try again.')
+  }
+}
+
+const playPlaylistAll = (data) => {
+  console.log('Playing entire playlist:', data)
+  
+  if (!data || !data.playlist) {
+    alert('Invalid playlist data')
+    return
+  }
+  
+  const { playlist } = data
+  const { videoIds, titles, currentIndex = 0 } = playlist
+  
+  if (!videoIds || videoIds.length === 0) {
+    alert('No valid video IDs found in this playlist')
+    return
+  }
+  
+  // Update videos and videoIds with playlist data
+  videos.value = videoIds.map((vid, idx) => ({
+    id: idx,
+    video_id: vid,
+    title: titles[idx] || `Playlist Item ${idx + 1}`,
+  }))
+  videoIds.value = videoIds
+  currentVideoIndex.value = currentIndex
+  
+  // Switch to playlist tab if not already there
+  if (activeTab.value !== ROUTES.PLAYLIST) {
+    activeTab.value = ROUTES.PLAYLIST
+  }
+  
+  // Play the first video
+  const firstVideoId = videoIds[currentIndex]
+  const playVideo = () => {
+    if (player.value && isPlayerReady.value) {
+      console.log('Using existing player, loading video:', firstVideoId)
+      player.value.loadVideoById(firstVideoId)
+      player.value.playVideo().catch(() => {
+        console.log('Autoplay blocked, user needs to click play')
+      })
+    } else {
+      // Initialize new player
+      console.log('Initializing new player with video:', firstVideoId)
+      initPlaylistPlayer(firstVideoId)
+    }
+  }
+  
+  // Wait for YouTube API and DOM
+  const initPlayer = () => {
+    if (window.YT && window.YT.Player) {
+      const playerElement = document.getElementById('player')
+      if (playerElement) {
+        playVideo()
+      } else {
+        setTimeout(initPlayer, 100)
+      }
+    } else {
+      setTimeout(initPlayer, 100)
+    }
+  }
+  initPlayer()
+}
+
+const playPlaylist = async (playlist) => {
+  console.log('playPlaylist called with:', playlist)
+  
+  if (!playlist || !playlist.id) {
+    console.error('Invalid playlist:', playlist)
+    alert('Invalid playlist')
+    return
+  }
+
+  try {
+    loading.value = true
+    console.log('Fetching playlist details for ID:', playlist.id)
+    
+    // Fetch full playlist with items
+    const fullPlaylist = await playlistService.getById(playlist.id)
+    console.log('Fetched playlist with items:', fullPlaylist)
+    
+    if (!fullPlaylist || !fullPlaylist.items || fullPlaylist.items.length === 0) {
+      alert('This playlist is empty!')
+      return
+    }
+
+    // Extract video IDs from playlist items
+    const extractedVideoIds = []
+    console.log('Playlist type:', fullPlaylist.type)
+    console.log('Processing', fullPlaylist.items.length, 'items')
+    
+    for (const item of fullPlaylist.items) {
+      let videoId = null
+      
+      if (fullPlaylist.type === 'video' && item.video_id) {
+        // Video playlist: use video_id directly
+        videoId = item.video_id
+        console.log('Video item found, video_id:', videoId)
+      } else if (fullPlaylist.type === 'film') {
+        // Film playlist: check film_video_url from films table
+        if (item.film_video_url) {
+          // Extract video_id from film_video_url
+          const regex = /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/
+          const match = item.film_video_url.match(regex)
+          if (match) {
+            videoId = match[1]
+            console.log('Film item - extracted video_id from film_video_url:', videoId)
+          } else {
+            console.warn('Could not extract video_id from film_video_url:', item.film_video_url)
+          }
+        } else if (item.video_url) {
+          // Fallback: try video_url (legacy)
+          const regex = /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/
+          const match = item.video_url.match(regex)
+          if (match) {
+            videoId = match[1]
+            console.log('Film item - extracted video_id from video_url (legacy):', videoId)
+          }
+        } else {
+          console.warn('Film item has no video_url:', item)
+        }
+      }
+      
+      if (videoId && !extractedVideoIds.includes(videoId)) {
+        extractedVideoIds.push(videoId)
+      }
+    }
+
+    console.log('Extracted video IDs:', extractedVideoIds)
+
+    if (extractedVideoIds.length === 0) {
+      alert('No valid video IDs found in this playlist!')
+      return
+    }
+
+    // Update videos and videoIds
+    videos.value = extractedVideoIds.map((vid, idx) => ({
+      id: idx,
+      video_id: vid,
+      title: `Playlist Item ${idx + 1}`,
+    }))
+    videoIds.value = extractedVideoIds
+    currentVideoIndex.value = 0
+
+    // Switch to playlist tab if not already there
+    if (activeTab.value !== ROUTES.PLAYLIST) {
+      activeTab.value = ROUTES.PLAYLIST
+    }
+
+    // Initialize or load player with first video
+    const firstVideoId = extractedVideoIds[0]
+    
+    // Check if player exists and has the loadVideoById method
+    const playerIsValid = player.value && typeof player.value.loadVideoById === 'function'
+    
+    if (playerIsValid && isPlayerReady.value) {
+      // Player already exists and ready, just load the video
+      console.log('Using existing player, loading video:', firstVideoId)
+      player.value.loadVideoById(firstVideoId)
+      player.value.playVideo().catch(() => {
+        console.log('Autoplay blocked, user needs to click play')
+      })
+    } else {
+      // Need to initialize player - similar to instantPlay logic
+      console.log('Initializing new player with video:', firstVideoId)
+      
+      // Wait for YouTube API to be ready if needed
+      const initPlayer = () => {
+        if (!window.YT || !window.YT.Player) {
+          console.warn('YouTube API not ready yet, waiting...')
+          setTimeout(initPlayer, 100)
+          return
+        }
+        
+        try {
+          // Destroy existing player if it exists but is invalid
+          if (player.value && !playerIsValid) {
+            console.log('Destroying invalid player')
+            try {
+              player.value.destroy?.()
+            } catch (e) {
+              console.warn('Error destroying old player:', e)
+            }
+            player.value = null
+            isPlayerReady.value = false
+          }
+          
+          // Create new player
+          player.value = new window.YT.Player('player', {
+            height: '100%',
+            width: '100%',
+            videoId: firstVideoId,
+            playerVars: {
+              autoplay: 1,
+              controls: 1,
+              loop: 0,
+              modestbranding: 0,
+              rel: 0,
+              showinfo: 1,
+              enablejsapi: 1,
+            },
+            events: {
+              onReady: (event) => {
+                console.log('Playlist player ready!')
+                isPlayerReady.value = true
+                event.target.setVolume(volume.value)
+                event.target.playVideo().catch(() => {
+                  console.log('Autoplay blocked, user needs to click play')
+                })
+              },
+              onStateChange: (event) => {
+                // When video ends, play next video
+                if (event.data === window.YT.PlayerState.ENDED) {
+                  playNextVideo()
+                }
+              },
+              onError: (event) => {
+                console.error('Player error:', event.data)
+              },
+            },
+          })
+        } catch (error) {
+          console.error('Failed to create player:', error)
+          alert('Failed to initialize video player. Please try again.')
+        }
+      }
+      
+      // Check if DOM element exists
+      setTimeout(() => {
+        const playerElement = document.getElementById('player')
+        if (playerElement) {
+          initPlayer()
+        } else {
+          console.warn('Player element not found, retrying...')
+          setTimeout(() => {
+            const retryElement = document.getElementById('player')
+            if (retryElement) {
+              initPlayer()
+            } else {
+              alert('Video player element not found. Please refresh the page.')
+            }
+          }, 500)
+        }
+      }, 100)
+    }
+  } catch (error) {
+    console.error('Error playing playlist:', error)
+    alert(`Error: ${error.message || 'Failed to play playlist'}`)
+  } finally {
+    loading.value = false
   }
 }
 
@@ -606,24 +1049,12 @@ const addFromHistory = async (videoId) => {
     }
 
     // Add to database
-    const response = await fetch(`${API_BASE}/videos`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(videoData),
-    })
-
-    if (response.ok) {
-      await fetchVideos() // Refresh the list
-      alert('✅ Video added to playlist!')
-    } else {
-      const error = await response.json()
-      alert(`Error: ${error.error}`)
-    }
+    await videoService.create(videoData)
+    await fetchVideos() // Refresh the list
+    alert('✅ Video added to playlist!')
   } catch (error) {
     console.error('Error adding video from history:', error)
-    alert('Error adding video to playlist')
+    alert(`Error: ${error.message || 'Error adding video to playlist'}`)
   } finally {
     addingToPlaylist.value = null
   }
@@ -637,385 +1068,311 @@ const toggleSidebar = () => {
   showSidebar.value = !showSidebar.value
 }
 
+const handleChangeTab = (tab) => {
+  if (isValidRoute(tab)) {
+    activeTab.value = tab
+  } else {
+    activeTab.value = DEFAULT_ROUTE
+  }
+}
+
+const handleUpdateNewVideo = (updatedVideo) => {
+  newVideo.value = updatedVideo
+}
+
+const handleCancelAdd = () => {
+  resetForm()
+  showAddForm.value = false
+}
+
+const handleToggleAddForm = () => {
+  showAddForm.value = !showAddForm.value
+}
+
+// Authentication handlers
+const handleLoginSuccess = (user) => {
+  isAuthenticated.value = true
+  currentUser.value = user
+}
+
+const handleSignOut = () => {
+  authService.logout()
+  
+  // Reset all state variables
+  isAuthenticated.value = false
+  currentUser.value = null
+  showProfileModal.value = false
+  
+  // Reset video states
+  videos.value = []
+  videoIds.value = []
+  currentVideoIndex.value = 0
+  
+  // Reset player states
+  player.value = null
+  isPlayerReady.value = false
+  
+  // Reset UI states
+  showAddForm.value = false
+  loading.value = false
+  volume.value = 50
+  isMuted.value = false
+  showVolumeSlider.value = false
+  activeTab.value = DEFAULT_ROUTE
+  instantPlayUrl.value = ''
+  draggedIndex.value = null
+  draggedOverIndex.value = null
+  instantPlayHistory.value = []
+  addingToPlaylist.value = null
+  showSidebar.value = true
+  youtubeApiReady.value = false
+  
+  // Reset form data
+  newVideo.value = {
+    title: '',
+    video_id: '',
+    youtube_url: '',
+    thumbnail_url: '',
+    duration: '',
+  }
+}
+
+const handleProfile = () => {
+  showProfileModal.value = true
+}
+
+const checkAuthentication = () => {
+  const storedUser = localStorage.getItem('user')
+  const storedAuth = localStorage.getItem('isAuthenticated')
+  
+  if (storedAuth === 'true' && storedUser) {
+    try {
+      currentUser.value = JSON.parse(storedUser)
+      isAuthenticated.value = true
+    } catch (e) {
+      console.error('Error parsing user data:', e)
+      handleSignOut()
+    }
+  }
+}
+
 // Computed properties
 const currentVideo = computed(() => {
   return videos.value[currentVideoIndex.value] || null
 })
 
-onMounted(async () => {
-  // Load YouTube API
-  if (!window.YT) {
-    const tag = document.createElement('script')
-    tag.src = 'https://www.youtube.com/iframe_api'
-    const firstScriptTag = document.getElementsByTagName('script')[0]
-    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag)
-  } else {
-    // YouTube API already loaded
+// Watch for authentication changes and fetch videos when user logs in
+watch(isAuthenticated, async (authenticated) => {
+  if (authenticated) {
+    // User just logged in, fetch videos
+    await fetchVideos()
+  }
+})
+
+// Watch for tab changes and fetch videos when switching to playlist tab
+watch(activeTab, async (newTab) => {
+  if (newTab === ROUTES.PLAYLIST && isAuthenticated.value) {
+    await fetchVideos()
+  }
+})
+
+const handleAuthError = () => {
+  handleSignOut()
+}
+
+const loadYouTubeAPI = async () => {
+  // Check if already loaded
+  if (window.YT) {
+    console.log('YouTube API already loaded')
     youtubeApiReady.value = true
+    return
   }
 
+  // Get configuration
+  const useProxy = import.meta.env.VITE_USE_PROXY === 'true' || import.meta.env.VITE_USE_PROXY === '1'
+  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
+  
+  const proxyUrl = `${apiBase}/proxy/youtube-api`
+  const directUrl = 'https://www.youtube.com/iframe_api'
+
+  // Try loading with proxy first if enabled, otherwise try direct
+  const tryLoad = (url, method) => {
+    return new Promise((resolve, reject) => {
+      const tag = document.createElement('script')
+      tag.src = url
+      
+      tag.onload = () => {
+        console.log(`YouTube API loaded successfully via ${method}`)
+        resolve()
+      }
+      
+      tag.onerror = (error) => {
+        console.error(`Failed to load YouTube API via ${method}:`, error)
+        reject(error)
+      }
+
+      // Clean up any existing tag first
+      const existingTag = document.querySelector('script[src*="youtube.com/iframe_api"], script[src*="/proxy/youtube-api"]')
+      if (existingTag) {
+        existingTag.remove()
+      }
+
+      const firstScriptTag = document.getElementsByTagName('script')[0]
+      if (firstScriptTag && firstScriptTag.parentNode) {
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag)
+      } else {
+        document.head.appendChild(tag)
+      }
+    })
+  }
+
+  // Try loading: proxy first if enabled, then direct as fallback
+  try {
+    if (useProxy) {
+      console.log('Attempting to load YouTube API through proxy...')
+      try {
+        await tryLoad(proxyUrl, 'proxy')
+      } catch (proxyError) {
+        console.warn('Proxy loading failed, trying direct connection...', proxyError)
+        await tryLoad(directUrl, 'direct')
+      }
+    } else {
+      console.log('Loading YouTube API directly...')
+      await tryLoad(directUrl, 'direct')
+    }
+  } catch (error) {
+    console.error('Failed to load YouTube API after all attempts:', error)
+    // Still try to proceed - player might work if API loads later
+  }
+}
+
+onMounted(async () => {
+  // Load YouTube API (with proxy support)
+  await loadYouTubeAPI()
+
+  // Listen for authentication errors (token expired, etc.)
+  eventBus.on('auth-error', handleAuthError)
+
+  // Check authentication
+  checkAuthentication()
+  
   // Fetch videos from database
   await fetchVideos()
+})
+
+onUnmounted(() => {
+  // Clean up event listener
+  eventBus.off('auth-error', handleAuthError)
 })
 </script>
 
 <template>
-  <header class="app-header">
-    <!-- Toggle Sidebar Button -->
-    <div class="app-header-logo">
-      <button @click="toggleSidebar" class="sidebar-toggle-btn">
-        <span class="burger-icon">☰</span>
-      </button>
+  <LoginPage v-if="!isAuthenticated" @login-success="handleLoginSuccess" />
 
-      <div class="app-header-title">MUZIK</div>
-    </div>
-
-    <!-- Tab Navigation -->
-    <div v-show="showSidebar" class="tab-navigation">
-      <button
-        @click="activeTab = 'instant'"
-        :class="{ active: activeTab === 'instant' }"
-        class="tab-btn"
-      >
-        ⚡ Instant Play
-      </button>
-      <button
-        @click="activeTab = 'playlist'"
-        :class="{ active: activeTab === 'playlist' }"
-        class="tab-btn"
-      >
-        📋 Playlist
-      </button>
-    </div>
-  </header>
-  <main>
-    <div id="video-container" :class="{ 'full-width': !showSidebar }">
-      <div v-if="loading && videoIds.length === 0" class="loading-state">
-        <div class="spinner"></div>
-        <p>Loading your playlist...</p>
-      </div>
-      <div v-else-if="videoIds.length > 0" id="player"></div>
-      <div v-else class="no-videos">
-        <h2>No Videos Found</h2>
-        <p>Add some videos to start playing!</p>
-      </div>
-    </div>
+  <template v-else>
+    <AppHeader
+      :show-sidebar="showSidebar"
+      :active-tab="activeTab"
+      @toggle-sidebar="toggleSidebar"
+      @change-tab="handleChangeTab"
+      @profile="handleProfile"
+      @signout="handleSignOut"
+    />
+    <main>
+    <VideoPlayer :loading="loading" :video-ids="videoIds" :show-sidebar="showSidebar" />
 
     <div v-show="showSidebar" id="list-container">
-      <!-- Instant Play Tab -->
-      <div v-if="activeTab === 'instant'" class="tab-content instant-play-tab">
-        <h3>⚡ Instant Play</h3>
-        <p class="tab-description">Play any YouTube video instantly without adding to playlist</p>
+      <InstantPlayTab
+        v-if="activeTab === ROUTES.YOUTUBE || activeTab === ROUTES.INSTANT_PLAY"
+        :instant-play-url="instantPlayUrl"
+        :video-ids="videoIds"
+        :is-muted="isMuted"
+        :instant-play-history="instantPlayHistory"
+        :adding-to-playlist="addingToPlaylist"
+        :is-in-playlist="isInPlaylist"
+        @update:instant-play-url="instantPlayUrl = $event"
+        @instant-play="instantPlay"
+        @play-previous="playPreviousVideo"
+        @play-next="playNextVideo"
+        @toggle-mute="toggleMute"
+        @play-from-history="playFromHistory"
+        @clear-history="clearHistory"
+        @add-from-history="addFromHistory"
+      />
 
-        <div class="instant-play-form">
-          <div class="form-group">
-            <label>YouTube URL or Video ID:</label>
-            <div class="instant-input-group">
-              <input
-                v-model="instantPlayUrl"
-                placeholder="https://youtube.com/watch?v=... or Video ID"
-                @keyup.enter="instantPlay"
-              />
-              <button @click="instantPlay" :disabled="!instantPlayUrl" class="play-btn">
-                ▶️ Play Now
-              </button>
-            </div>
-          </div>
-        </div>
+      <MoviesTab
+        v-if="activeTab === ROUTES.MOVIES"
+        :loading="loading"
+      />
 
-        <div class="quick-actions">
-          <h4>Quick Actions:</h4>
-          <div class="quick-buttons">
-            <button @click="playPreviousVideo" :disabled="videoIds.length <= 1" class="quick-btn">
-              ⏮️ Previous
-            </button>
-            <button @click="playNextVideo" :disabled="videoIds.length <= 1" class="quick-btn">
-              ⏭️ Next
-            </button>
-            <button @click="toggleMute" class="quick-btn">
-              {{ isMuted ? '🔇' : '🔊' }} {{ isMuted ? 'Unmute' : 'Mute' }}
-            </button>
-          </div>
-        </div>
-
-        <!-- History Section -->
-        <div class="history-section" v-if="instantPlayHistory.length > 0">
-          <div class="history-header">
-            <h4>📜 History</h4>
-            <button @click="clearHistory" class="clear-history-btn">🗑️ Clear</button>
-          </div>
-          <div class="history-list">
-            <div v-for="(item, index) in instantPlayHistory" :key="index" class="history-item">
-              <div class="history-thumbnail" @click="playFromHistory(item.video_id)">
-                <img
-                  :src="`https://img.youtube.com/vi/${item.video_id}/mqdefault.jpg`"
-                  alt="Thumbnail"
-                />
-                <div class="play-overlay">
-                  <span>▶️</span>
-                </div>
-              </div>
-              <div class="history-info" @click="playFromHistory(item.video_id)">
-                <p class="history-title">{{ item.title || item.video_id }}</p>
-                <p class="history-time">{{ new Date(item.played_at).toLocaleString() }}</p>
-              </div>
-              <div class="history-actions">
-                <button
-                  v-if="!isInPlaylist(item.video_id) && addingToPlaylist !== item.video_id"
-                  @click.stop="addFromHistory(item.video_id)"
-                  class="history-add-btn"
-                  title="Add to Playlist"
-                >
-                  ➕
-                </button>
-                <div
-                  v-else-if="addingToPlaylist === item.video_id"
-                  class="adding-spinner"
-                  title="Adding to playlist..."
-                >
-                  <div class="spinner-icon">⏳</div>
-                </div>
-                <span v-else class="in-playlist-badge" title="Already in playlist">✓</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Playlist Tab -->
-      <div v-if="activeTab === 'playlist'" class="tab-content playlist-tab">
-        <!-- Player Info -->
-        <div v-if="currentVideo" class="playlist-info">
-          <h3>Now Playing:</h3>
-          <p class="current-title">{{ currentVideo.title }}</p>
-          <p class="current-id">ID: {{ currentVideo.video_id }}</p>
-          <div class="controls">
-            <button
-              @click="playPreviousVideo"
-              :disabled="videoIds.length <= 1"
-              class="control-btn prev-btn"
-            >
-              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
-              </svg>
-            </button>
-
-            <div class="volume-controls">
-              <button @click="adjustVolume(-10)" class="control-btn volume-btn">
-                <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M11 5L6 9H2v6h4l5 4V5z" />
-                </svg>
-              </button>
-
-              <button @click="toggleMute" class="control-btn mute-btn" :class="{ muted: isMuted }">
-                <svg v-if="!isMuted" class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-                  <path
-                    d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"
-                  />
-                </svg>
-                <svg v-else class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-                  <path
-                    d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"
-                  />
-                </svg>
-              </button>
-
-              <button @click="adjustVolume(10)" class="control-btn volume-btn">
-                <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-                  <path
-                    d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"
-                  />
-                </svg>
-              </button>
-
-              <div class="volume-slider-container">
-                <button @click="toggleVolumeSlider" class="control-btn volume-slider-btn">
-                  <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-                    <path
-                      d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"
-                    />
-                  </svg>
-                  <span class="volume-text">{{ volume }}%</span>
-                </button>
-
-                <div v-if="showVolumeSlider" class="volume-slider">
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    v-model="volume"
-                    @input="setVolume(volume)"
-                    class="slider"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <button
-              @click="playNextVideo"
-              :disabled="videoIds.length <= 1"
-              class="control-btn next-btn"
-            >
-              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        <!-- Add Video Button -->
-        <div class="add-video-section">
-          <button @click="showAddForm = !showAddForm" class="add-btn">
-            {{ showAddForm ? '✖ Cancel' : '➕ Add Video' }}
-          </button>
-        </div>
-
-        <!-- Add Video Form -->
-        <div v-if="showAddForm" class="add-form">
-          <h3>Add New Video</h3>
-
-          <div class="form-group">
-            <label>YouTube URL:</label>
-            <input v-model="newVideo.youtube_url" placeholder="https://youtube.com/watch?v=..." />
-          </div>
-
-          <div class="form-group">
-            <label>OR Video ID:</label>
-            <input v-model="newVideo.video_id" placeholder="XbLemOwzdxk" />
-          </div>
-
-          <div class="form-group">
-            <label>Title:</label>
-            <div class="title-input-group">
-              <input v-model="newVideo.title" placeholder="Video title (auto-filled)" />
-              <button @click="fetchVideoDetails" :disabled="loading" class="fetch-btn">
-                {{ loading ? '⏳' : '🔍' }} Fetch
-              </button>
-            </div>
-          </div>
-
-          <div v-if="newVideo.thumbnail_url" class="form-group">
-            <label>Thumbnail Preview:</label>
-            <img :src="newVideo.thumbnail_url" class="thumbnail-preview" />
-          </div>
-
-          <div class="form-group">
-            <label>Duration (optional):</label>
-            <input v-model="newVideo.duration" placeholder="3:45" />
-          </div>
-
-          <div class="form-actions">
-            <button @click="addVideo" :disabled="loading" class="save-btn">
-              {{ loading ? 'Adding...' : 'Add Video' }}
-            </button>
-            <button @click="(resetForm(), (showAddForm = false))" class="cancel-btn">Cancel</button>
-          </div>
-        </div>
-
-        <!-- Playlist -->
-        <div class="playlist">
-          <h3>Your Videos ({{ videos.length }})</h3>
-          <div v-if="loading" class="loading">Loading...</div>
-          <ul v-else-if="videos.length > 0">
-            <li
-              v-for="(video, index) in videos"
-              :key="video.id"
-              :class="{
-                active: index === currentVideoIndex,
-                'drag-over': draggedOverIndex === index,
-                dragging: draggedIndex === index,
-              }"
-              @click="playVideoAtIndex(index)"
-              draggable="true"
-              @dragstart="handleDragStart($event, index)"
-              @dragend="handleDragEnd"
-              @dragover="handleDragOver($event, index)"
-              @dragleave="handleDragLeave"
-              @drop="handleDrop($event, index)"
-            >
-              <div class="video-item">
-                <div class="drag-handle">⋮⋮</div>
-                <div class="video-info">
-                  <span class="video-title">{{ video.title }}</span>
-                  <span class="video-id">{{ video.video_id }}</span>
-                </div>
-                <div class="video-actions">
-                  <button
-                    @click.stop="moveVideoToTop(index)"
-                    :disabled="index === 0"
-                    class="move-to-top-btn"
-                    title="Move to Top"
-                  >
-                    ⬆️
-                  </button>
-                  <button @click.stop="deleteVideo(video.id)" class="delete-btn">🗑️</button>
-                </div>
-              </div>
-            </li>
-          </ul>
-          <div v-else class="empty-playlist">
-            <p>No videos yet. Add your first video!</p>
-          </div>
-        </div>
-      </div>
-      <!-- End Playlist Tab -->
+      <PlaylistTab
+        v-if="activeTab === ROUTES.PLAYLIST"
+        :current-video="currentVideo"
+        :video-ids="videoIds"
+        :volume="volume"
+        :is-muted="isMuted"
+        :show-volume-slider="showVolumeSlider"
+        :show-add-form="showAddForm"
+        :new-video="newVideo"
+        :loading="loading"
+        :videos="videos"
+        :current-video-index="currentVideoIndex"
+        :dragged-index="draggedIndex"
+        :dragged-over-index="draggedOverIndex"
+        @play-previous="playPreviousVideo"
+        @play-next="playNextVideo"
+        @toggle-mute="toggleMute"
+        @adjust-volume="adjustVolume"
+        @set-volume="setVolume"
+        @toggle-volume-slider="toggleVolumeSlider"
+        @toggle-add-form="handleToggleAddForm"
+        @update:new-video="handleUpdateNewVideo"
+        @add-video="addVideo"
+        @fetch-details="fetchVideoDetails"
+        @cancel-add="handleCancelAdd"
+        @play-video="playVideoAtIndex"
+        @delete-video="deleteVideo"
+        @move-to-top="moveVideoToTop"
+        @drag-start="handleDragStart"
+        @drag-end="handleDragEnd"
+        @drag-over="handleDragOver"
+        @drag-leave="handleDragLeave"
+        @drop="handleDrop"
+        @play-item="playPlaylistItem"
+        @play-all="playPlaylistAll"
+      />
     </div>
   </main>
+
+  <!-- Profile Modal -->
+  <div v-if="showProfileModal" class="modal-overlay" @click="showProfileModal = false">
+    <div class="profile-modal" @click.stop>
+      <div class="modal-header">
+        <h2>Profile</h2>
+        <button @click="showProfileModal = false" class="close-btn">✖</button>
+      </div>
+      <div class="modal-body" v-if="currentUser">
+        <div class="profile-info">
+          <div class="info-item">
+            <label>Email:</label>
+            <span>{{ currentUser.email }}</span>
+          </div>
+          <div class="info-item" v-if="currentUser.username">
+            <label>Username:</label>
+            <span>{{ currentUser.username }}</span>
+          </div>
+          <div class="info-item" v-if="currentUser.created_at">
+            <label>Member Since:</label>
+            <span>{{ new Date(currentUser.created_at).toLocaleDateString() }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </template>
 </template>
 
 <style scoped>
-.app-header {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1000;
-  background: linear-gradient(135deg, #1a1a1a, #2a2a2a);
-  padding: 15px 20px;
-  border-bottom: 2px solid #4ecdc4;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(10px);
-  height: 100px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-}
-
-.app-header-logo {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-.app-header-title {
-  color: #4ecdc4;
-  font-size: 35px;
-  font-weight: bold;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-}
-
-.app-header-logo .sidebar-toggle-btn {
-  background: none;
-  border: none;
-  color: white;
-  font-size: 24px;
-}
-
-.app-header-logo .sidebar-toggle-btn:hover {
-  background: none;
-  border: none;
-  color: white;
-  font-size: 24px;
-}
-
-.app-header h1 {
-  margin: 0;
-  color: #4ecdc4;
-  font-size: 24px;
-  font-weight: bold;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-  flex-shrink: 0;
-}
 main {
   width: 100vw;
   height: calc(100vh - 100px);
@@ -1032,76 +1389,43 @@ main {
   font-family: 'Arial', sans-serif;
 }
 
-#video-container {
-  width: 70%;
-  height: 100%;
-  border-radius: 10px;
-  overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: width 0.3s ease;
+/* Large Desktop (>= 1440px) */
+@media screen and (min-width: 1440px) {
+  main {
+    height: calc(100vh - 110px);
+    margin-top: 110px;
+  }
 }
 
-#video-container.full-width {
-  width: 100%;
+/* Desktop (1024px - 1439px) */
+@media screen and (min-width: 1024px) and (max-width: 1439px) {
+  main {
+    height: calc(100vh - 100px);
+    margin-top: 100px;
+  }
 }
 
-#player {
-  width: 100%;
-  height: 100%;
+/* Tablet (768px - 1023px) */
+@media screen and (min-width: 768px) and (max-width: 1023px) {
+  main {
+    height: calc(100vh - 85px);
+    margin-top: 85px;
+    gap: 12px;
+    padding: 12px;
+  }
 }
 
-.no-videos {
-  text-align: center;
-  color: #666;
+/* Mobile (< 768px) */
+@media screen and (max-width: 767px) {
+  main {
+    height: calc(100vh - 75px);
+    margin-top: 75px;
+    gap: 10px;
+    padding: 10px;
+  }
 }
 
-.no-videos h2 {
-  margin-bottom: 10px;
-  color: #888;
-}
-
-.sidebar-toggle-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: none;
-  color: white;
-  width: 50px;
-  height: 50px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  transition: all 0.3s ease;
-  flex-shrink: 0;
-}
-
-.sidebar-toggle-btn .burger-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s ease;
-}
-
-.sidebar-toggle-btn:hover {
-  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
-  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.5);
-  transform: translateY(-2px);
-}
-
-.sidebar-toggle-btn:hover .burger-icon {
-  transform: scale(1.2) rotate(90deg);
-}
-
-.sidebar-toggle-btn:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
-}
-
+/* Desktop (>= 1024px) - Default */
 #list-container {
   width: 30%;
   height: 100%;
@@ -1112,850 +1436,54 @@ main {
   display: flex;
   flex-direction: column;
   transition: all 0.3s ease;
+  min-width: 320px;
 }
 
-.tab-navigation {
-  display: flex;
-  background-color: #3a3a3a;
-  border-radius: 8px;
-  padding: 3px;
-  flex-shrink: 0;
-  flex: 1;
-  max-width: 400px;
-  transition: all 0.3s ease;
-  align-items: center;
-}
-
-.tab-btn {
-  flex: 1;
-  background: none;
-  border: none;
-  color: #ccc;
-  padding: 10px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-}
-
-.tab-btn:hover {
-  background-color: rgba(78, 205, 196, 0.1);
-  color: #4ecdc4;
-}
-
-.tab-btn.active {
-  background: linear-gradient(145deg, #4ecdc4, #45b7aa);
-  color: white;
-  box-shadow: 0 2px 8px rgba(78, 205, 196, 0.3);
-}
-
-.tab-content {
-  animation: fadeIn 0.3s ease-in-out;
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
+/* Large Desktop (>= 1440px) */
+@media screen and (min-width: 1440px) {
+  main {
+    gap: 20px;
+    padding: 20px;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+
+  #list-container {
+    width: 28%;
+    padding: 20px;
+    min-width: 350px;
   }
 }
 
-/* Instant Play Tab Styles */
-.instant-play-tab h3 {
-  color: #4ecdc4;
-  margin-bottom: 8px;
-  font-size: 18px;
-}
-
-.tab-description {
-  color: #888;
-  font-size: 13px;
-  margin-bottom: 15px;
-  line-height: 1.3;
-}
-
-.instant-play-form {
-  background-color: #3a3a3a;
-  padding: 12px;
-  border-radius: 8px;
-  margin-bottom: 12px;
-}
-
-.instant-input-group {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.instant-input-group input {
-  flex: 1;
-  padding: 12px;
-  border: 1px solid #555;
-  border-radius: 8px;
-  background-color: #2a2a2a;
-  color: white;
-  font-size: 14px;
-}
-
-.instant-input-group input:focus {
-  outline: none;
-  border-color: #4ecdc4;
-  box-shadow: 0 0 0 2px rgba(78, 205, 196, 0.2);
-}
-
-.play-btn {
-  background: linear-gradient(145deg, #ff6b6b, #ff5252);
-  color: white;
-  border: none;
-  padding: 12px 20px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-  white-space: nowrap;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
-}
-
-.play-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4);
-}
-
-.play-btn:disabled {
-  background: #666;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-.quick-actions {
-  background-color: #3a3a3a;
-  padding: 12px;
-  border-radius: 8px;
-  flex-shrink: 0;
-}
-
-.quick-actions h4 {
-  color: #4ecdc4;
-  margin-bottom: 15px;
-  font-size: 16px;
-}
-
-.quick-buttons {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.quick-btn {
-  background-color: #2a2a2a;
-  color: white;
-  border: 1px solid #555;
-  padding: 10px 16px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  transition: all 0.3s ease;
-  flex: 1;
-  min-width: 100px;
-}
-
-.quick-btn:hover:not(:disabled) {
-  background-color: #4ecdc4;
-  border-color: #4ecdc4;
-  transform: translateY(-1px);
-}
-
-.quick-btn:disabled {
-  background-color: #1a1a1a;
-  color: #666;
-  cursor: not-allowed;
-  transform: none;
-}
-
-/* Playlist Tab Styles */
-.playlist-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-  flex-shrink: 0;
-}
-
-.playlist-header h3 {
-  color: #4ecdc4;
-  margin: 0;
-  font-size: 18px;
-}
-
-.add-btn {
-  background-color: #4ecdc4;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 5px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.3s;
-}
-
-.add-btn:hover {
-  background-color: #45b7aa;
-}
-
-.add-form {
-  background-color: #3a3a3a;
-  padding: 20px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-}
-
-.add-form h3 {
-  margin-top: 0;
-  color: #4ecdc4;
-}
-
-.form-group {
-  margin-bottom: 15px;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 5px;
-  color: #ccc;
-  font-size: 14px;
-}
-
-.form-group input {
-  width: 100%;
-  padding: 8px;
-  border: 1px solid #555;
-  border-radius: 4px;
-  background-color: #2a2a2a;
-  color: white;
-  font-size: 14px;
-}
-
-.form-group input:focus {
-  outline: none;
-  border-color: #4ecdc4;
-}
-
-.title-input-group {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.title-input-group input {
-  flex: 1;
-}
-
-.fetch-btn {
-  background-color: #4ecdc4;
-  color: white;
-  border: none;
-  padding: 8px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  white-space: nowrap;
-  transition: background-color 0.3s;
-}
-
-.fetch-btn:hover:not(:disabled) {
-  background-color: #45b7aa;
-}
-
-.fetch-btn:disabled {
-  background-color: #666;
-  cursor: not-allowed;
-}
-
-.thumbnail-preview {
-  width: 100%;
-  max-width: 200px;
-  height: auto;
-  border-radius: 8px;
-  border: 2px solid #4ecdc4;
-  margin-top: 8px;
-}
-
-.form-actions {
-  display: flex;
-  gap: 10px;
-  justify-content: flex-end;
-}
-
-.save-btn,
-.cancel-btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.3s;
-}
-
-.save-btn {
-  background-color: #4ecdc4;
-  color: white;
-}
-
-.save-btn:hover:not(:disabled) {
-  background-color: #45b7aa;
-}
-
-.save-btn:disabled {
-  background-color: #666;
-  cursor: not-allowed;
-}
-
-.cancel-btn {
-  background-color: #666;
-  color: white;
-}
-
-.cancel-btn:hover {
-  background-color: #777;
-}
-
-.playlist-info {
-  margin-bottom: 20px;
-  text-align: center;
-  background-color: #3a3a3a;
-  padding: 15px;
-  border-radius: 8px;
-}
-
-.playlist-info h3 {
-  margin-top: 0;
-  color: #4ecdc4;
-}
-
-.current-title {
-  font-size: 16px;
-  font-weight: bold;
-  color: #ff6b6b;
-  margin: 10px 0 5px 0;
-}
-
-.current-id {
-  font-size: 12px;
-  color: #888;
-  margin: 0 0 15px 0;
-}
-
-.controls {
-  display: flex;
-  gap: 15px;
-  justify-content: center;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.volume-controls {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  background-color: rgba(0, 0, 0, 0.3);
-  padding: 8px 12px;
-  border-radius: 25px;
-  backdrop-filter: blur(10px);
-}
-
-.control-btn {
-  position: relative;
-  background: linear-gradient(145deg, #2a2a2a, #3a3a3a);
-  color: #ffffff;
-  border: none;
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow:
-    0 4px 15px rgba(0, 0, 0, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  overflow: hidden;
-}
-
-.control-btn::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(145deg, #4ecdc4, #45b7aa);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  border-radius: 50%;
-}
-
-.control-btn:hover:not(:disabled)::before {
-  opacity: 1;
-}
-
-.control-btn:hover:not(:disabled) {
-  transform: translateY(-2px) scale(1.05);
-  box-shadow:
-    0 8px 25px rgba(78, 205, 196, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
-}
-
-.control-btn:active:not(:disabled) {
-  transform: translateY(0) scale(0.95);
-  box-shadow:
-    0 2px 10px rgba(0, 0, 0, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-}
-
-.control-btn:disabled {
-  background: linear-gradient(145deg, #1a1a1a, #2a2a2a);
-  color: #666;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-.control-btn:disabled::before {
-  display: none;
-}
-
-.btn-icon {
-  width: 20px;
-  height: 20px;
-  position: relative;
-  z-index: 1;
-  transition: all 0.3s ease;
-}
-
-.control-btn:hover:not(:disabled) .btn-icon {
-  transform: scale(1.1);
-}
-
-/* Specific button styles */
-.prev-btn:hover:not(:disabled) .btn-icon {
-  transform: scale(1.1) translateX(-1px);
-}
-
-.next-btn:hover:not(:disabled) .btn-icon {
-  transform: scale(1.1) translateX(1px);
-}
-
-.mute-btn:hover:not(:disabled) .btn-icon {
-  transform: scale(1.1) rotate(5deg);
-}
-
-.mute-btn.muted {
-  background: linear-gradient(145deg, #ff6b6b, #ff5252);
-}
-
-.mute-btn.muted::before {
-  background: linear-gradient(145deg, #ff5252, #e53935);
-}
-
-.volume-btn {
-  width: 40px;
-  height: 40px;
-}
-
-.volume-btn .btn-icon {
-  width: 16px;
-  height: 16px;
-}
-
-.volume-slider-container {
-  position: relative;
-}
-
-.volume-slider-btn {
-  width: auto;
-  min-width: 60px;
-  height: 40px;
-  padding: 0 12px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.volume-text {
-  font-size: 12px;
-  font-weight: bold;
-  color: #4ecdc4;
-}
-
-.volume-slider {
-  position: absolute;
-  top: -60px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.9);
-  padding: 15px 20px;
-  border-radius: 10px;
-  backdrop-filter: blur(10px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-  z-index: 1000;
-}
-
-.volume-slider::after {
-  content: '';
-  position: absolute;
-  bottom: -8px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
-  border-top: 8px solid rgba(0, 0, 0, 0.9);
-}
-
-.slider {
-  width: 120px;
-  height: 6px;
-  border-radius: 3px;
-  background: #333;
-  outline: none;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-.slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: linear-gradient(145deg, #4ecdc4, #45b7aa);
-  cursor: pointer;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-  transition: all 0.3s ease;
-}
-
-.slider::-webkit-slider-thumb:hover {
-  transform: scale(1.2);
-  box-shadow: 0 4px 12px rgba(78, 205, 196, 0.4);
-}
-
-.slider::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: linear-gradient(145deg, #4ecdc4, #45b7aa);
-  cursor: pointer;
-  border: none;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-}
-
-.slider::-moz-range-thumb:hover {
-  transform: scale(1.2);
-  box-shadow: 0 4px 12px rgba(78, 205, 196, 0.4);
-}
-
-/* Pulse animation for active state */
-.control-btn:focus {
-  outline: none;
-  animation: pulse 0.6s ease-in-out;
-}
-
-@keyframes pulse {
-  0% {
-    box-shadow:
-      0 4px 15px rgba(0, 0, 0, 0.3),
-      inset 0 1px 0 rgba(255, 255, 255, 0.1),
-      0 0 0 0 rgba(78, 205, 196, 0.7);
+/* Tablet (768px - 1023px) */
+@media screen and (min-width: 768px) and (max-width: 1023px) {
+  main {
+    gap: 12px;
+    padding: 12px;
   }
-  70% {
-    box-shadow:
-      0 4px 15px rgba(0, 0, 0, 0.3),
-      inset 0 1px 0 rgba(255, 255, 255, 0.1),
-      0 0 0 10px rgba(78, 205, 196, 0);
-  }
-  100% {
-    box-shadow:
-      0 4px 15px rgba(0, 0, 0, 0.3),
-      inset 0 1px 0 rgba(255, 255, 255, 0.1),
-      0 0 0 0 rgba(78, 205, 196, 0);
+
+  #list-container {
+    width: 35%;
+    min-width: 280px;
+    padding: 12px;
   }
 }
 
-/* Add Video Section */
-.add-video-section {
-  margin-bottom: 15px;
-  display: flex;
-  justify-content: center;
-}
+/* Mobile (< 768px) */
+@media screen and (max-width: 767px) {
+  main {
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+    height: calc(100vh - 80px);
+    margin-top: 80px;
+  }
 
-.add-video-section .add-btn {
-  background: linear-gradient(135deg, #4ecdc4 0%, #45b7aa 100%);
-  border: none;
-  color: white;
-  padding: 12px 24px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(78, 205, 196, 0.3);
-  width: 100%;
-  max-width: 300px;
-}
-
-.add-video-section .add-btn:hover {
-  background: linear-gradient(135deg, #45b7aa 0%, #4ecdc4 100%);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(78, 205, 196, 0.4);
-}
-
-.add-video-section .add-btn:active {
-  transform: translateY(0);
-}
-
-.playlist {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-.playlist h3 {
-  color: #4ecdc4;
-  margin-bottom: 15px;
-}
-
-.loading,
-.empty-playlist {
-  text-align: center;
-  color: #888;
-  padding: 20px;
-}
-
-.playlist ul {
-  list-style: none;
-  padding: 0;
-}
-
-.playlist li {
-  margin: 5px 0;
-  background-color: #3a3a3a;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: all 0.3s;
-  font-size: 14px;
-  position: relative;
-}
-
-.playlist li:hover {
-  background-color: #4a4a4a;
-  transform: translateX(5px);
-}
-
-.playlist li.active {
-  background-color: #ff6b6b;
-  color: white;
-}
-
-.playlist li.dragging {
-  opacity: 0.5;
-  transform: rotate(5deg);
-}
-
-.playlist li.drag-over {
-  background-color: #4ecdc4;
-  border: 2px dashed #45b7aa;
-  transform: scale(1.02);
-}
-
-.drag-handle {
-  position: absolute;
-  left: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #888;
-  font-size: 12px;
-  cursor: grab;
-  user-select: none;
-  padding: 4px;
-}
-
-.drag-handle:active {
-  cursor: grabbing;
-}
-
-.playlist li:hover .drag-handle {
-  color: #4ecdc4;
-}
-
-.video-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 12px 12px 30px;
-  position: relative;
-}
-
-.video-info {
-  flex: 1;
-}
-
-.video-title {
-  display: block;
-  font-weight: bold;
-  margin-bottom: 4px;
-}
-
-.video-id {
-  display: block;
-  font-size: 12px;
-  color: #888;
-}
-
-.video-actions {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.playlist li:hover .video-actions {
-  opacity: 1;
-}
-
-.move-to-top-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: none;
-  cursor: pointer;
-  font-size: 12px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  color: white;
-  box-shadow:
-    0 4px 15px rgba(102, 126, 234, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  position: relative;
-  overflow: hidden;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  min-width: 40px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.move-to-top-btn::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-  transition: left 0.5s ease;
-}
-
-.move-to-top-btn:hover:not(:disabled)::before {
-  left: 100%;
-}
-
-.move-to-top-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
-  transform: translateY(-2px) scale(1.05);
-  box-shadow:
-    0 8px 25px rgba(102, 126, 234, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.3);
-}
-
-.move-to-top-btn:active:not(:disabled) {
-  transform: translateY(0) scale(0.98);
-  box-shadow:
-    0 2px 10px rgba(102, 126, 234, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
-}
-
-.move-to-top-btn:disabled {
-  background: linear-gradient(135deg, #555 0%, #444 100%);
-  cursor: not-allowed;
-  transform: none;
-  box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  opacity: 0.6;
-}
-
-.delete-btn {
-  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
-  border: none;
-  cursor: pointer;
-  font-size: 12px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  color: white;
-  box-shadow:
-    0 4px 15px rgba(255, 107, 107, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  position: relative;
-  overflow: hidden;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  min-width: 40px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.delete-btn::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-  transition: left 0.5s ease;
-}
-
-.delete-btn:hover::before {
-  left: 100%;
-}
-
-.delete-btn:hover {
-  background: linear-gradient(135deg, #ee5a52 0%, #ff6b6b 100%);
-  transform: translateY(-2px) scale(1.05);
-  box-shadow:
-    0 8px 25px rgba(255, 107, 107, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.3);
-}
-
-.delete-btn:active {
-  transform: translateY(0) scale(0.98);
-  box-shadow:
-    0 2px 10px rgba(255, 107, 107, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  #list-container {
+    width: 100%;
+    height: auto;
+    max-height: 40vh;
+    min-width: auto;
+    padding: 10px;
+  }
 }
 
 /* Scrollbar styling */
@@ -1976,254 +1504,153 @@ main {
   background: #6a6a6a;
 }
 
-/* Loading state */
-.loading-state {
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100%;
-  color: #888;
-  font-size: 18px;
-  padding: 40px;
+  z-index: 2000;
+  animation: fadeIn 0.3s ease;
 }
 
-.spinner {
-  border: 4px solid rgba(255, 255, 255, 0.1);
-  border-top: 4px solid #4ecdc4;
-  border-radius: 50%;
-  width: 50px;
-  height: 50px;
-  animation: spin 1s linear infinite;
-  margin-bottom: 20px;
+.profile-modal {
+  background: linear-gradient(135deg, #2a2a2a, #3a3a3a);
+  border-radius: 16px;
+  padding: 0;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(78, 205, 196, 0.2);
+  animation: slideUp 0.3s ease;
 }
 
-@keyframes spin {
-  0% {
-    transform: rotate(0deg);
+/* Tablet responsive for modal */
+@media screen and (min-width: 768px) and (max-width: 1023px) {
+  .profile-modal {
+    width: 85%;
+    max-width: 450px;
   }
-  100% {
-    transform: rotate(360deg);
+
+  .modal-header {
+    padding: 18px 20px;
+  }
+
+  .modal-header h2 {
+    font-size: 22px;
+  }
+
+  .modal-body {
+    padding: 20px;
   }
 }
 
-/* History Section Styles */
-.history-section {
-  margin-top: 20px;
-  background-color: #3a3a3a;
-  border-radius: 8px;
-  padding: 15px;
+/* Mobile responsive for modal */
+@media screen and (max-width: 767px) {
+  .profile-modal {
+    width: 95%;
+    max-width: none;
+    border-radius: 12px;
+  }
+
+  .modal-header {
+    padding: 15px 18px;
+  }
+
+  .modal-header h2 {
+    font-size: 20px;
+  }
+
+  .modal-body {
+    padding: 18px;
+  }
+
+  .info-item span {
+    font-size: 14px;
+  }
 }
 
-.history-header {
+.modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 15px;
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(78, 205, 196, 0.2);
 }
 
-.history-header h4 {
+.modal-header h2 {
   color: #4ecdc4;
   margin: 0;
-  font-size: 16px;
+  font-size: 24px;
 }
 
-.clear-history-btn {
-  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+.close-btn {
+  background: none;
   border: none;
-  color: white;
-  padding: 6px 12px;
-  border-radius: 6px;
+  color: #ccc;
+  font-size: 24px;
   cursor: pointer;
-  font-size: 12px;
-  transition: all 0.3s ease;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  line-height: 1;
 }
 
-.clear-history-btn:hover {
-  background: linear-gradient(135deg, #ee5a52 0%, #ff6b6b 100%);
-  transform: translateY(-2px);
+.close-btn:hover {
+  background-color: rgba(255, 107, 107, 0.1);
+  color: #ff6b6b;
 }
 
-.history-list {
+.modal-body {
+  padding: 24px;
+}
+
+.profile-info {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  max-height: 400px;
-  overflow-y: auto;
+  gap: 20px;
 }
 
-.history-item {
+.info-item {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px;
-  background-color: #2a2a2a;
-  border-radius: 8px;
-  transition: all 0.3s ease;
-}
-
-.history-item:hover {
-  background-color: #3a3a3a;
-}
-
-.history-thumbnail {
-  position: relative;
-  width: 80px;
-  height: 60px;
-  border-radius: 6px;
-  overflow: hidden;
-  flex-shrink: 0;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.history-thumbnail:hover {
-  transform: scale(1.05);
-}
-
-.history-thumbnail img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.play-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.history-thumbnail:hover .play-overlay {
-  opacity: 1;
-}
-
-.play-overlay span {
-  font-size: 24px;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
-}
-
-.history-info {
-  flex: 1;
-  min-width: 0;
-  cursor: pointer;
-}
-
-.history-title {
-  color: white;
-  font-size: 14px;
-  font-weight: 500;
-  margin: 0 0 4px 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-
-.history-time {
-  color: #888;
-  font-size: 12px;
-  margin: 0;
-}
-
-.history-actions {
-  display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
 }
 
-.history-add-btn {
-  background: linear-gradient(135deg, #4ecdc4 0%, #45b7aa 100%);
-  border: none;
-  color: white;
-  padding: 8px;
-  border-radius: 8px;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 18px;
-  transition: all 0.3s ease;
-  flex-shrink: 0;
+.info-item label {
+  color: #888;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.history-add-btn:hover {
-  background: linear-gradient(135deg, #45b7aa 0%, #4ecdc4 100%);
-  transform: scale(1.1);
-  box-shadow: 0 4px 12px rgba(78, 205, 196, 0.3);
+.info-item span {
+  color: #fff;
+  font-size: 16px;
 }
 
-.history-add-btn:active {
-  transform: scale(0.95);
-}
-
-.in-playlist-badge {
-  background: linear-gradient(135deg, #51cf66 0%, #40c057 100%);
-  color: white;
-  padding: 8px;
-  border-radius: 8px;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  font-weight: bold;
-  flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(81, 207, 102, 0.3);
-}
-
-.adding-spinner {
-  background: linear-gradient(135deg, #ffd43b 0%, #fab005 100%);
-  padding: 8px;
-  border-radius: 8px;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.spinner-icon {
-  font-size: 18px;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
+@keyframes fadeIn {
   from {
-    transform: rotate(0deg);
+    opacity: 0;
   }
   to {
-    transform: rotate(360deg);
+    opacity: 1;
   }
 }
 
-/* Scrollbar for history list */
-.history-list::-webkit-scrollbar {
-  width: 6px;
-}
-
-.history-list::-webkit-scrollbar-track {
-  background: #2a2a2a;
-  border-radius: 3px;
-}
-
-.history-list::-webkit-scrollbar-thumb {
-  background: #4a4a4a;
-  border-radius: 3px;
-}
-
-.history-list::-webkit-scrollbar-thumb:hover {
-  background: #6a6a6a;
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 </style>

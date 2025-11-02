@@ -87,7 +87,16 @@ DATABASE_URL=postgresql://...
 
 ## API Endpoints
 
+### Public Endpoints
 - `GET /health` - Health check
+
+### Auth Endpoints
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/login` - Login user
+- `GET /api/auth/profile` - Get current user profile (requires token)
+- `GET /api/auth/profile/:id` - Get user profile by ID (requires token)
+
+### Video Endpoints
 - `GET /api/videos` - Get all videos
 - `GET /api/videos/:id` - Get video by ID
 - `POST /api/videos` - Add new video
@@ -95,12 +104,56 @@ DATABASE_URL=postgresql://...
 - `DELETE /api/videos/:id` - Delete video
 - `GET /api/videos/ids` - Get all video IDs
 
+### Music Endpoints
+- `GET /api/music` - Get all music
+- `GET /api/music/:id` - Get music by ID
+- `POST /api/music` - Create music
+- `PUT /api/music/:id` - Update music
+- `DELETE /api/music/:id` - Delete music
+
+### Playlist Endpoints
+- `GET /api/playlists` - Get all playlists
+- `GET /api/playlists/:id` - Get playlist by ID
+- `POST /api/playlists` - Create playlist
+- `PUT /api/playlists/:id` - Update playlist
+- `DELETE /api/playlists/:id` - Delete playlist
+- `POST /api/playlists/:playlist_id/items` - Add item to playlist
+- `DELETE /api/playlists/:playlist_id/items/:item_id` - Remove item from playlist
+
+## Authentication
+
+The API uses JWT (JSON Web Tokens) for authentication. 
+
+### How to use:
+1. **Register/Login** to get a token:
+```bash
+POST /api/auth/login
+{
+  "email": "user@example.com",
+  "password": "password123"
+}
+```
+
+2. **Include token** in subsequent requests:
+```bash
+Authorization: Bearer <your_token_here>
+```
+
+3. **Use middleware** to protect routes:
+```javascript
+import { authenticateToken } from './middleware/authMiddleware.js'
+
+router.get('/protected', authenticateToken, yourController)
+```
+
 ## Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `DB_TYPE` | Database type: `sqlite` or `postgresql` | Yes |
-| `DATABASE_URL` | PostgreSQL connection string (required if DB_TYPE=postgresql) | Conditional |
-| `PORT` | Server port | No (default: 3001) |
-| `NODE_ENV` | Environment: `development` or `production` | No |
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `DB_TYPE` | Database type: `sqlite` or `postgresql` | Yes | `sqlite` |
+| `DATABASE_URL` | PostgreSQL connection string (required if DB_TYPE=postgresql) | Conditional | - |
+| `PORT` | Server port | No | `3001` |
+| `NODE_ENV` | Environment: `development` or `production` | No | `development` |
+| `JWT_SECRET` | Secret key for JWT token signing | Yes | - |
+| `JWT_EXPIRES_IN` | Token expiration time | No | `7d` |
 
