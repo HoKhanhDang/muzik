@@ -15,4 +15,33 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
   },
+  build: {
+    // Optimize chunk splitting
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          // Separate vendor chunks
+          if (id.includes('node_modules')) {
+            if (id.includes('vue')) {
+              return 'vue-vendor'
+            }
+            return 'vendor'
+          }
+        }
+      }
+    },
+    // Enable compression
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: false, // Keep console logs for debugging, set to true in production
+      }
+    },
+    // Optimize chunk size
+    chunkSizeWarningLimit: 1000,
+  },
+  // Optimize dependencies
+  optimizeDeps: {
+    include: ['vue']
+  }
 })

@@ -10,6 +10,7 @@ import LoginPage from './components/auth/LoginPage.vue'
 import { DEFAULT_ROUTE, ROUTES, isValidRoute } from './constants/routes.js'
 import { videoService, authService } from './services/index.js'
 import { eventBus } from './utils/eventBus.js'
+import { detectNetworkSpeed, getOptimalPlayerVars, setupNetworkMonitoring } from './utils/networkDetection.js'
 
 // Database integration
 const videos = ref([])
@@ -49,6 +50,10 @@ const newVideo = ref({
 
 // Track YouTube API readiness
 const youtubeApiReady = ref(false)
+
+// Network quality detection
+const networkQuality = ref('good') // 'good', 'medium', 'slow', 'offline'
+const networkCleanup = ref(null) // Cleanup function for network monitoring
 
 const fetchVideos = async () => {
   try {
@@ -298,29 +303,34 @@ const initializePlayer = () => {
 
   console.log('Initializing YouTube player with video:', videoId)
 
+  // Get optimized playerVars based on network quality
+  const optimizedPlayerVars = getOptimalPlayerVars(networkQuality.value, audioOnlyMode.value)
+
   try {
     player.value = new window.YT.Player('player', {
       height: audioOnlyMode.value ? '1' : '100%',
       width: audioOnlyMode.value ? '1' : '100%',
       videoId: videoId,
-      playerVars: {
-        autoplay: 0, // Don't autoplay - browser restrictions
-        controls: audioOnlyMode.value ? 0 : 1, // Hide controls in audio-only mode
-        loop: 0,
-        modestbranding: 0,
-        rel: 1,
-        showinfo: 1,
-        enablejsapi: 1,
-        vq: audioOnlyMode.value ? 'tiny' : 'default', // Set quality based on mode
-      },
+      playerVars: optimizedPlayerVars,
       events: {
         onReady: (event) => {
           console.log('Player ready!')
           isPlayerReady.value = true
           event.target.setVolume(volume.value)
-          // Set quality based on audio-only mode
-          if (audioOnlyMode.value) {
-            event.target.setPlaybackQuality('small')
+          
+          // Force lower quality for slow networks or audio-only mode
+          if (networkQuality.value === 'slow' || audioOnlyMode.value) {
+            try {
+              event.target.setPlaybackQuality('small')
+            } catch (e) {
+              console.warn('Could not set quality:', e)
+            }
+          } else if (networkQuality.value === 'medium') {
+            try {
+              event.target.setPlaybackQuality('medium')
+            } catch (e) {
+              console.warn('Could not set quality:', e)
+            }
           }
           
           // Get initial duration
@@ -709,25 +719,32 @@ const instantPlay = async () => {
     } else {
       // If player not ready, initialize with this video
       if (window.YT) {
+        const optimizedPlayerVars = getOptimalPlayerVars(networkQuality.value, audioOnlyMode.value)
+        optimizedPlayerVars.autoplay = 1
+        
         player.value = new window.YT.Player('player', {
           height: audioOnlyMode.value ? '1' : '100%',
           width: audioOnlyMode.value ? '1' : '100%',
           videoId: videoId,
-          playerVars: {
-            autoplay: 1,
-            controls: audioOnlyMode.value ? 0 : 1,
-            loop: 0,
-            modestbranding: 1,
-            rel: 0,
-            showinfo: 1,
-            vq: audioOnlyMode.value ? 'tiny' : 'default',
-          },
+          playerVars: optimizedPlayerVars,
           events: {
             onReady: (event) => {
               isPlayerReady.value = true
               event.target.setVolume(volume.value)
-              if (audioOnlyMode.value) {
-                event.target.setPlaybackQuality('small')
+              
+              // Force lower quality for slow networks or audio-only mode
+              if (networkQuality.value === 'slow' || audioOnlyMode.value) {
+                try {
+                  event.target.setPlaybackQuality('small')
+                } catch (e) {
+                  console.warn('Could not set quality:', e)
+                }
+              } else if (networkQuality.value === 'medium') {
+                try {
+                  event.target.setPlaybackQuality('medium')
+                } catch (e) {
+                  console.warn('Could not set quality:', e)
+                }
               }
               
               // Get initial duration
@@ -841,26 +858,32 @@ const playPlaylistItem = (data) => {
       player.value.loadVideoById(videoId)
     } else {
       if (window.YT && window.YT.Player) {
+        const optimizedPlayerVars = getOptimalPlayerVars(networkQuality.value, audioOnlyMode.value)
+        optimizedPlayerVars.autoplay = 1
+        
         player.value = new window.YT.Player('player', {
           height: audioOnlyMode.value ? '1' : '100%',
           width: audioOnlyMode.value ? '1' : '100%',
           videoId: videoId,
-          playerVars: {
-            autoplay: 1,
-            controls: audioOnlyMode.value ? 0 : 1,
-            loop: 0,
-            modestbranding: 1,
-            rel: 0,
-            showinfo: 1,
-            enablejsapi: 1,
-            vq: audioOnlyMode.value ? 'tiny' : 'default',
-          },
+          playerVars: optimizedPlayerVars,
           events: {
             onReady: (event) => {
               isPlayerReady.value = true
               event.target.setVolume(volume.value)
-              if (audioOnlyMode.value) {
-                event.target.setPlaybackQuality('small')
+              
+              // Force lower quality for slow networks or audio-only mode
+              if (networkQuality.value === 'slow' || audioOnlyMode.value) {
+                try {
+                  event.target.setPlaybackQuality('small')
+                } catch (e) {
+                  console.warn('Could not set quality:', e)
+                }
+              } else if (networkQuality.value === 'medium') {
+                try {
+                  event.target.setPlaybackQuality('medium')
+                } catch (e) {
+                  console.warn('Could not set quality:', e)
+                }
               }
               
               // Get initial duration
@@ -901,28 +924,34 @@ const initPlaylistPlayer = (videoId) => {
       isPlayerReady.value = false
     }
     
-    // Create new player
+    // Create new player with optimized settings
+    const optimizedPlayerVars = getOptimalPlayerVars(networkQuality.value, audioOnlyMode.value)
+    optimizedPlayerVars.autoplay = 1
+    
     player.value = new window.YT.Player('player', {
       height: audioOnlyMode.value ? '1' : '100%',
       width: audioOnlyMode.value ? '1' : '100%',
       videoId: videoId,
-      playerVars: {
-        autoplay: 1,
-        controls: audioOnlyMode.value ? 0 : 1,
-        loop: 0,
-        modestbranding: 0,
-        rel: 0,
-        showinfo: 1,
-        enablejsapi: 1,
-        vq: audioOnlyMode.value ? 'tiny' : 'default',
-      },
+      playerVars: optimizedPlayerVars,
       events: {
         onReady: (event) => {
           console.log('Playlist player ready!')
           isPlayerReady.value = true
           event.target.setVolume(volume.value)
-          if (audioOnlyMode.value) {
-            event.target.setPlaybackQuality('small')
+          
+          // Force lower quality for slow networks or audio-only mode
+          if (networkQuality.value === 'slow' || audioOnlyMode.value) {
+            try {
+              event.target.setPlaybackQuality('small')
+            } catch (e) {
+              console.warn('Could not set quality:', e)
+            }
+          } else if (networkQuality.value === 'medium') {
+            try {
+              event.target.setPlaybackQuality('medium')
+            } catch (e) {
+              console.warn('Could not set quality:', e)
+            }
           }
           
           // Get initial duration
@@ -1248,6 +1277,22 @@ const handleAuthError = () => {
 }
 
 const loadYouTubeAPI = async () => {
+  // Preconnect to YouTube for faster loading
+  if (!document.querySelector('link[rel="preconnect"][href="https://www.youtube.com"]')) {
+    const preconnect = document.createElement('link')
+    preconnect.rel = 'preconnect'
+    preconnect.href = 'https://www.youtube.com'
+    preconnect.crossOrigin = 'anonymous'
+    document.head.appendChild(preconnect)
+  }
+  
+  if (!document.querySelector('link[rel="dns-prefetch"][href="https://www.youtube.com"]')) {
+    const dnsPrefetch = document.createElement('link')
+    dnsPrefetch.rel = 'dns-prefetch'
+    dnsPrefetch.href = 'https://www.youtube.com'
+    document.head.appendChild(dnsPrefetch)
+  }
+  
   // Check if already loaded
   if (window.YT) {
     console.log('YouTube API already loaded')
@@ -1267,6 +1312,8 @@ const loadYouTubeAPI = async () => {
     return new Promise((resolve, reject) => {
       const tag = document.createElement('script')
       tag.src = url
+      tag.async = true // Async loading for better performance
+      tag.defer = true // Defer loading
       
       tag.onload = () => {
         console.log(`YouTube API loaded successfully via ${method}`)
@@ -1314,7 +1361,17 @@ const loadYouTubeAPI = async () => {
 }
 
 onMounted(async () => {
-  // Load YouTube API (with proxy support)
+  // Detect network quality
+  networkQuality.value = await detectNetworkSpeed()
+  console.log('Network quality detected:', networkQuality.value)
+  
+  // Setup network monitoring
+  networkCleanup.value = setupNetworkMonitoring((quality) => {
+    networkQuality.value = quality
+    console.log('Network quality changed to:', quality)
+  })
+  
+  // Load YouTube API (with proxy support and preconnect)
   await loadYouTubeAPI()
 
   // Listen for authentication errors (token expired, etc.)
@@ -1328,6 +1385,11 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  // Clean up network monitoring
+  if (networkCleanup.value) {
+    networkCleanup.value()
+  }
+  
   // Clean up event listener
   eventBus.off('auth-error', handleAuthError)
   // Clean up time tracking interval
