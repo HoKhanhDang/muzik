@@ -1,4 +1,6 @@
 <script setup>
+import SvgIcon from '../common/SvgIcon.vue'
+
 defineProps({
   instantPlayHistory: Array,
   addingToPlaylist: String,
@@ -11,8 +13,14 @@ defineEmits(['play-from-history', 'clear-history', 'add-from-history'])
 <template>
   <div class="history-section" v-if="instantPlayHistory.length > 0">
     <div class="history-header">
-      <h4>📜 History</h4>
-      <button @click="$emit('clear-history')" class="clear-history-btn">🗑️ Clear</button>
+      <h4 class="history-heading">
+        <SvgIcon name="history" :size="16" />
+        <span>History</span>
+      </h4>
+      <button @click="$emit('clear-history')" class="clear-history-btn">
+        <SvgIcon name="delete" :size="14" />
+        <span>Clear</span>
+      </button>
     </div>
     <div class="history-list">
       <div
@@ -26,7 +34,7 @@ defineEmits(['play-from-history', 'clear-history', 'add-from-history'])
             alt="Thumbnail"
           />
           <div class="play-overlay">
-            <span>▶️</span>
+            <SvgIcon name="play" :size="24" color="white" />
           </div>
         </div>
         <div class="history-info" @click="$emit('play-from-history', item.video_id)">
@@ -40,7 +48,7 @@ defineEmits(['play-from-history', 'clear-history', 'add-from-history'])
             class="history-add-btn"
             title="Add to Playlist"
           >
-            ➕
+            <SvgIcon name="add" :size="18" />
           </button>
           <div
             v-else-if="addingToPlaylist === item.video_id"
@@ -49,7 +57,9 @@ defineEmits(['play-from-history', 'clear-history', 'add-from-history'])
           >
             <div class="spinner-icon">⏳</div>
           </div>
-          <span v-else class="in-playlist-badge" title="Already in playlist">✓</span>
+          <span v-else class="in-playlist-badge" title="Already in playlist">
+            <SvgIcon name="check" :size="18" />
+          </span>
         </div>
       </div>
     </div>
@@ -77,6 +87,12 @@ defineEmits(['play-from-history', 'clear-history', 'add-from-history'])
   font-size: 16px;
 }
 
+.history-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .clear-history-btn {
   background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
   border: none;
@@ -86,6 +102,9 @@ defineEmits(['play-from-history', 'clear-history', 'add-from-history'])
   cursor: pointer;
   font-size: 12px;
   transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .clear-history-btn:hover {
@@ -154,8 +173,7 @@ defineEmits(['play-from-history', 'clear-history', 'add-from-history'])
   opacity: 1;
 }
 
-.play-overlay span {
-  font-size: 24px;
+.play-overlay .svg-icon {
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
 }
 

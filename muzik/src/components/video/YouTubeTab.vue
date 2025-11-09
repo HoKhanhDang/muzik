@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { videoService } from '../../services/videoService.js'
 import HistorySection from '../history/HistorySection.vue'
 import PlayerControls from './PlayerControls.vue'
+import SvgIcon from '../common/SvgIcon.vue'
 
 const props = defineProps({
   instantPlayUrl: String,
@@ -147,20 +148,25 @@ const handleSwitchToInstant = () => {
         :class="{ active: viewMode === 'search' }"
         class="mode-btn"
       >
-        🔍 Search
+        <SvgIcon name="search" :size="16" />
+        <span>Search</span>
       </button>
       <button
         @click="handleSwitchToInstant"
         :class="{ active: viewMode === 'instant' }"
         class="mode-btn"
       >
-        ⚡ Instant Play
+        <SvgIcon name="instant_play" :size="16" />
+        <span>Instant Play</span>
       </button>
     </div>
 
     <!-- Search Mode -->
     <div v-if="viewMode === 'search'" class="search-mode">
-      <h3>🔍 Search YouTube Videos</h3>
+      <h3 class="mode-title">
+        <SvgIcon name="search" :size="18" />
+        <span>Search YouTube Videos</span>
+      </h3>
       <p class="tab-description">Search and play videos from YouTube instantly</p>
 
       <div class="search-section">
@@ -174,7 +180,8 @@ const handleSwitchToInstant = () => {
             :disabled="searching"
           />
           <button @click="handleSearch" :disabled="searching || !searchQuery.trim()" class="search-btn">
-            {{ searching ? 'Searching...' : '🔍 Search' }}
+            <SvgIcon v-if="!searching" name="search" :size="16" />
+            <span>{{ searching ? 'Searching...' : 'Search' }}</span>
           </button>
         </div>
       </div>
@@ -190,10 +197,12 @@ const handleSwitchToInstant = () => {
               <p class="channel-name">{{ video.channelTitle }}</p>
               <div class="video-actions">
                 <button @click="handlePlayNow(video)" class="btn-play">
-                  ▶️ Play Now
+                  <SvgIcon name="play" :size="14" />
+                  <span>Play</span>
                 </button>
                 <button @click="handleAddToPlaylist(video)" class="btn-add">
-                  ➕ Add to Playlist
+                  <SvgIcon name="add" :size="14" />
+                  <span>Add</span>
                 </button>
               </div>
             </div>
@@ -214,7 +223,10 @@ const handleSwitchToInstant = () => {
 
     <!-- Instant Play Mode -->
     <div v-if="viewMode === 'instant'" class="instant-mode">
-      <h3>⚡ Instant Play</h3>
+      <h3 class="mode-title">
+        <SvgIcon name="instant_play" :size="18" />
+        <span>Instant Play</span>
+      </h3>
       <p class="tab-description">Play any YouTube video instantly without adding to playlist</p>
 
       <div class="instant-play-form">
@@ -231,7 +243,8 @@ const handleSwitchToInstant = () => {
               title="Double-click to paste from clipboard"
             />
             <button @click="$emit('instant-play')" :disabled="!instantPlayUrl" class="play-btn">
-              ▶️ Play Now
+              <SvgIcon name="play" :size="16" />
+              <span>Play</span>
             </button>
           </div>
         </div>
@@ -311,6 +324,10 @@ const handleSwitchToInstant = () => {
   cursor: pointer;
   font-size: 13px;
   transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 .mode-btn:hover {
@@ -330,6 +347,12 @@ const handleSwitchToInstant = () => {
   color: #4ecdc4;
   margin-bottom: 8px;
   font-size: 18px;
+}
+
+.mode-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .tab-description {
@@ -384,6 +407,9 @@ const handleSwitchToInstant = () => {
   font-weight: 600;
   white-space: nowrap;
   transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .search-btn:hover:not(:disabled) {
@@ -472,6 +498,10 @@ const handleSwitchToInstant = () => {
   cursor: pointer;
   font-size: 12px;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
 .btn-play:hover {
@@ -489,6 +519,10 @@ const handleSwitchToInstant = () => {
   cursor: pointer;
   font-size: 12px;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
 .btn-add:hover {
@@ -573,6 +607,9 @@ const handleSwitchToInstant = () => {
   white-space: nowrap;
   transition: all 0.3s ease;
   box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .play-btn:hover:not(:disabled) {
