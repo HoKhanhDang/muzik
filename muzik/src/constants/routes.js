@@ -1,6 +1,6 @@
 /**
  * Application Routes Configuration
- * Định nghĩa các routes và tabs cho ứng dụng
+ * Defines routes and tabs for the application
  */
 
 export const ROUTES = {
@@ -22,7 +22,7 @@ export const ROUTE_CONFIG = {
   },
   [ROUTES.MOVIES]: {
     id: ROUTES.MOVIES,
-    label: 'Xem Phim',
+    label: 'Movies',
     icon: '🎥',
     path: '/movies',
     component: 'MoviesTab',

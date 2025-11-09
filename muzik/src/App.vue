@@ -33,6 +33,7 @@ const isAuthenticated = ref(false)
 const currentUser = ref(null)
 const showProfileModal = ref(false)
 const audioOnlyMode = ref(false) // Audio-only mode toggle
+const isPlaying = ref(false) // Track player state
 
 // Form data for adding new videos
 const newVideo = ref({
@@ -321,16 +322,12 @@ const initializePlayer = () => {
           // Try to play - will fail gracefully if autoplay blocked
           try {
             event.target.playVideo()
+            isPlaying.value = true
           } catch (error) {
             console.log('Autoplay blocked, user needs to click play:', error)
           }
         },
-        onStateChange: (event) => {
-          // When video ends, play next video
-          if (event.data === window.YT.PlayerState.ENDED) {
-            playNextVideo()
-          }
-        },
+        onStateChange: handlePlayerStateChange,
         onError: (event) => {
           console.error('Player error:', event.data)
           if (event.data === 5) {
@@ -439,6 +436,39 @@ const adjustVolume = (change) => {
 
 const toggleVolumeSlider = () => {
   showVolumeSlider.value = !showVolumeSlider.value
+}
+
+const togglePlay = () => {
+  if (!player.value || !isPlayerReady.value) {
+    console.warn('Player not ready')
+    return
+  }
+
+  try {
+    const playerState = player.value.getPlayerState()
+    
+    if (playerState === window.YT.PlayerState.PLAYING) {
+      player.value.pauseVideo()
+      isPlaying.value = false
+    } else {
+      player.value.playVideo()
+      isPlaying.value = true
+    }
+  } catch (error) {
+    console.error('Error toggling play/pause:', error)
+  }
+}
+
+// Helper function for consistent state change handling
+const handlePlayerStateChange = (event) => {
+  if (event.data === window.YT.PlayerState.PLAYING) {
+    isPlaying.value = true
+  } else if (event.data === window.YT.PlayerState.PAUSED) {
+    isPlaying.value = false
+  } else if (event.data === window.YT.PlayerState.ENDED) {
+    isPlaying.value = false
+    playNextVideo()
+  }
 }
 
 // Drag & Drop functions
@@ -619,9 +649,16 @@ const instantPlay = async () => {
                 event.target.setPlaybackQuality('small')
               }
               event.target.playVideo()
+              isPlaying.value = true
             },
             onStateChange: (event) => {
-              if (event.data === window.YT.PlayerState.ENDED) {
+              // Update playing state
+              if (event.data === window.YT.PlayerState.PLAYING) {
+                isPlaying.value = true
+              } else if (event.data === window.YT.PlayerState.PAUSED) {
+                isPlaying.value = false
+              } else if (event.data === window.YT.PlayerState.ENDED) {
+                isPlaying.value = false
                 // Don't auto-next for instant play
               }
             },
@@ -727,12 +764,20 @@ const playPlaylistItem = (data) => {
               if (audioOnlyMode.value) {
                 event.target.setPlaybackQuality('small')
               }
-              event.target.playVideo().catch(() => {
+              event.target.playVideo().then(() => {
+                isPlaying.value = true
+              }).catch(() => {
                 console.log('Autoplay blocked, user needs to click play')
               })
             },
             onStateChange: (event) => {
-              if (event.data === window.YT.PlayerState.ENDED) {
+              // Update playing state
+              if (event.data === window.YT.PlayerState.PLAYING) {
+                isPlaying.value = true
+              } else if (event.data === window.YT.PlayerState.PAUSED) {
+                isPlaying.value = false
+              } else if (event.data === window.YT.PlayerState.ENDED) {
+                isPlaying.value = false
                 // Don't auto-next for single video
               }
             },
@@ -779,16 +824,13 @@ const initPlaylistPlayer = (videoId) => {
           if (audioOnlyMode.value) {
             event.target.setPlaybackQuality('small')
           }
-          event.target.playVideo().catch(() => {
+          event.target.playVideo().then(() => {
+            isPlaying.value = true
+          }).catch(() => {
             console.log('Autoplay blocked, user needs to click play')
           })
         },
-        onStateChange: (event) => {
-          // When video ends, play next video
-          if (event.data === window.YT.PlayerState.ENDED) {
-            playNextVideo()
-          }
-        },
+        onStateChange: handlePlayerStateChange,
         onError: (event) => {
           console.error('Player error:', event.data)
         },
@@ -914,6 +956,12 @@ const toggleSidebar = () => {
 const handleChangeTab = (tab) => {
   if (isValidRoute(tab)) {
     activeTab.value = tab
+    
+    // Exit audio mode when switching away from playlist tab
+    if (tab !== ROUTES.PLAYLIST && audioOnlyMode.value) {
+      audioOnlyMode.value = false
+      showSidebar.value = true
+    }
   } else {
     activeTab.value = DEFAULT_ROUTE
   }
@@ -934,6 +982,11 @@ const handleToggleAddForm = () => {
 
 const toggleAudioOnlyMode = () => {
   audioOnlyMode.value = !audioOnlyMode.value
+  
+  // When entering audio mode, hide sidebar
+  if (audioOnlyMode.value) {
+    showSidebar.value = false
+  }
   
   // Reinitialize player with new settings
   if (player.value && isPlayerReady.value && videoIds.value.length > 0) {
@@ -1180,7 +1233,25 @@ onUnmounted(() => {
       @toggle-audio-mode="toggleAudioOnlyMode"
     />
     <main>
-    <VideoPlayer :loading="loading" :video-ids="videoIds" :show-sidebar="showSidebar" :audio-only-mode="audioOnlyMode" :is-player-ready="isPlayerReady" />
+    <VideoPlayer 
+      :loading="loading" 
+      :video-ids="videoIds" 
+      :show-sidebar="showSidebar" 
+      :audio-only-mode="audioOnlyMode" 
+      :is-player-ready="isPlayerReady"
+      :current-video="currentVideo"
+      :videos="videos"
+      :current-video-index="currentVideoIndex"
+      :volume="volume"
+      :is-muted="isMuted"
+      :is-playing="isPlaying"
+      @play-video="playVideoAtIndex"
+      @play-next="playNextVideo"
+      @play-previous="playPreviousVideo"
+      @toggle-mute="toggleMute"
+      @set-volume="setVolume"
+      @toggle-play="togglePlay"
+    />
 
     <div v-show="showSidebar" id="list-container">
       <YouTubeTab

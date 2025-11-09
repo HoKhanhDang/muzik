@@ -1,22 +1,22 @@
 /**
  * Film Service
- * Xử lý các API liên quan đến films
+ * Handle APIs related to films
  */
 import { apiClient } from './apiClient.js'
 import { API_ENDPOINTS } from '../constants/api.js'
 
 export const filmService = {
   /**
-   * Lấy tất cả films
+   * Get all films
    * @param {Object} params - { user_id? }
-   * @returns {Promise<Array>} Danh sách films
+   * @returns {Promise<Array>} List of films
    */
   getAll: async (params = {}) => {
     return apiClient.get(API_ENDPOINTS.FILMS, params)
   },
 
   /**
-   * Lấy film theo ID
+   * Get film by ID
    * @param {number|string} id - Film ID
    * @returns {Promise<Object>} Film object
    */
@@ -25,7 +25,7 @@ export const filmService = {
   },
 
   /**
-   * Tạo film mới
+   * Create new film
    * @param {Object} data - { title, director?, genre?, year?, description?, thumbnail_url?, duration?, video_url?, user_id? }
    * @returns {Promise<Object>} { id, message }
    */
@@ -34,7 +34,7 @@ export const filmService = {
   },
 
   /**
-   * Cập nhật film
+   * Update film
    * @param {number|string} id - Film ID
    * @param {Object} data - { title?, director?, genre?, year?, description?, thumbnail_url?, duration?, video_url? }
    * @returns {Promise<Object>} { message }
@@ -44,7 +44,7 @@ export const filmService = {
   },
 
   /**
-   * Xóa film
+   * Delete film
    * @param {number|string} id - Film ID
    * @returns {Promise<Object>} { message }
    */

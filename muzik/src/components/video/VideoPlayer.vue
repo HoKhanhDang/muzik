@@ -1,51 +1,69 @@
 <script setup>
+import AudioModeView from '../audio/AudioModeView.vue'
+
 defineProps({
   loading: Boolean,
   videoIds: Array,
   showSidebar: Boolean,
   audioOnlyMode: Boolean,
   isPlayerReady: Boolean,
+  currentVideo: Object,
+  videos: Array,
+  currentVideoIndex: Number,
+  volume: Number,
+  isMuted: Boolean,
+  isPlaying: Boolean,
 })
+
+defineEmits([
+  'play-video',
+  'play-next',
+  'play-previous',
+  'toggle-mute',
+  'set-volume',
+  'toggle-play',
+])
 </script>
 
 <template>
   <div id="video-container" :class="{ 'full-width': !showSidebar, 'audio-only': audioOnlyMode }">
-    <!-- Always render player element for instant play to work -->
-    <div class="player-wrapper">
-      <!-- Player element - always present in DOM -->
-      <div id="player" :class="{ 'hidden-player': audioOnlyMode }"></div>
+    <!-- Player element - always present in DOM but hidden in audio mode -->
+    <div class="player-wrapper" :class="{ 'hidden-player': audioOnlyMode }">
+      <div id="player"></div>
       
-      <!-- Overlays - only show when appropriate -->
-      <div class="overlay-container">
+      <!-- Overlays for video mode -->
+      <div v-if="!audioOnlyMode" class="overlay-container">
         <!-- Loading state -->
         <div v-if="loading && videoIds.length === 0" class="loading-state">
           <div class="spinner"></div>
           <p>Loading your playlist...</p>
         </div>
         
-        <!-- Audio-only overlay shown when video is hidden -->
-        <div v-else-if="audioOnlyMode && videoIds.length > 0" class="audio-only-overlay">
-          <div class="audio-visualizer">
-            <div class="audio-icon">🎵</div>
-            <div class="audio-waves">
-              <span class="wave"></span>
-              <span class="wave"></span>
-              <span class="wave"></span>
-              <span class="wave"></span>
-              <span class="wave"></span>
-            </div>
-            <p class="audio-mode-text">Audio Only Mode</p>
-            <p class="audio-hint">Video player is hidden - Audio only</p>
-          </div>
-        </div>
-        
-        <!-- No videos message - only show when truly no videos AND player is not ready -->
+        <!-- No videos message -->
         <div v-else-if="!loading && videoIds.length === 0 && !isPlayerReady" class="no-videos">
           <h2>No Videos Found</h2>
           <p>Add some videos to start playing!</p>
         </div>
       </div>
     </div>
+
+    <!-- Audio Mode View -->
+    <AudioModeView
+      v-if="audioOnlyMode"
+      :current-video="currentVideo"
+      :videos="videos"
+      :current-video-index="currentVideoIndex"
+      :volume="volume"
+      :is-muted="isMuted"
+      :is-player-ready="isPlayerReady"
+      :is-playing="isPlaying"
+      @play-video="$emit('play-video', $event)"
+      @play-next="$emit('play-next')"
+      @play-previous="$emit('play-previous')"
+      @toggle-mute="$emit('toggle-mute')"
+      @set-volume="$emit('set-volume', $event)"
+      @toggle-play="$emit('toggle-play')"
+    />
   </div>
 </template>
 
@@ -110,6 +128,19 @@ defineProps({
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.player-wrapper.hidden-player {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  overflow: hidden !important;
+  top: -9999px !important;
+  left: -9999px !important;
+  z-index: -1 !important;
 }
 
 .overlay-container {

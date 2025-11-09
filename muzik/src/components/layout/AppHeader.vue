@@ -1,14 +1,16 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-import { NAVIGATION_ITEMS } from '../../constants/routes.js'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { NAVIGATION_ITEMS, ROUTES } from '../../constants/routes.js'
 
-defineProps({
+const props = defineProps({
   showSidebar: Boolean,
   activeTab: String,
   audioOnlyMode: Boolean,
 })
 
 const emit = defineEmits(['toggle-sidebar', 'change-tab', 'profile', 'signout', 'toggle-audio-mode'])
+
+const isPlaylistTab = computed(() => props.activeTab === ROUTES.PLAYLIST)
 
 const showProfileMenu = ref(false)
 
@@ -68,8 +70,9 @@ onUnmounted(() => {
       <button
         @click="$emit('toggle-audio-mode')"
         class="audio-mode-btn"
-        :class="{ active: audioOnlyMode }"
-        :title="audioOnlyMode ? 'Switch to Video Mode' : 'Switch to Audio Only Mode'"
+        :class="{ active: audioOnlyMode, disabled: !isPlaylistTab }"
+        :disabled="!isPlaylistTab"
+        :title="!isPlaylistTab ? 'Only available in Playlist tab' : (audioOnlyMode ? 'Switch to Video Mode' : 'Switch to Audio Only Mode')"
       >
         <svg v-if="!audioOnlyMode" class="audio-icon" viewBox="0 0 24 24" fill="currentColor">
           <path d="M12 3v9.28c-.47-.17-.97-.28-1.5-.28C8.01 12 6 14.01 6 16.5S8.01 21 10.5 21c2.31 0 4.2-1.75 4.45-4H15V6h4V3h-7z" />
@@ -587,6 +590,27 @@ onUnmounted(() => {
 
 .audio-mode-btn:hover .audio-icon {
   transform: scale(1.1);
+}
+
+.audio-mode-btn:disabled,
+.audio-mode-btn.disabled {
+  background: linear-gradient(135deg, #4a4a4a 0%, #3a3a3a 100%);
+  cursor: not-allowed;
+  opacity: 0.5;
+  box-shadow: none;
+  transform: none !important;
+}
+
+.audio-mode-btn:disabled:hover,
+.audio-mode-btn.disabled:hover {
+  background: linear-gradient(135deg, #4a4a4a 0%, #3a3a3a 100%);
+  transform: none !important;
+  box-shadow: none;
+}
+
+.audio-mode-btn:disabled .audio-icon,
+.audio-mode-btn.disabled .audio-icon {
+  transform: none !important;
 }
 
 .profile-menu-container {

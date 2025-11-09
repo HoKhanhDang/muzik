@@ -1,25 +1,25 @@
 # YouTube API Proxy Setup
 
-Proxy endpoint này giúp bypass các hạn chế của proxy công ty khi load YouTube API.
+This proxy endpoint helps bypass company proxy restrictions when loading the YouTube API.
 
-## Cách hoạt động
+## How It Works
 
-Thay vì load trực tiếp từ `https://www.youtube.com/iframe_api`, frontend sẽ load qua backend proxy endpoint `/api/proxy/youtube-api`. Backend server sẽ fetch YouTube API và trả về cho client, giúp bypass proxy restrictions.
+Instead of loading directly from `https://www.youtube.com/iframe_api`, the frontend will load through the backend proxy endpoint `/api/proxy/youtube-api`. The backend server will fetch the YouTube API and return it to the client, helping bypass proxy restrictions.
 
-## Cấu hình
+## Configuration
 
-### 1. Tạo file `.env` trong folder `muzik/` (frontend)
+### 1. Create `.env` file in the `muzik/` folder (frontend)
 
 ```env
 # API URL Configuration
 VITE_API_URL=http://localhost:3001/api
 
-# Enable proxy cho YouTube API
-# Set to 'true' hoặc '1' để bật proxy
+# Enable proxy for YouTube API
+# Set to 'true' or '1' to enable proxy
 VITE_USE_PROXY=true
 ```
 
-### 2. Khởi động server
+### 2. Start the server
 
 ```bash
 cd server
@@ -28,61 +28,61 @@ npm start
 
 ### 3. Test proxy endpoint
 
-Kiểm tra proxy có hoạt động:
+Check if proxy is working:
 
 ```bash
 curl http://localhost:3001/api/proxy/youtube-api
 ```
 
-Hoặc mở browser:
+Or open in browser:
 ```
 http://localhost:3001/api/proxy/youtube-api
 ```
 
-### 4. Khởi động frontend
+### 4. Start the frontend
 
 ```bash
 cd muzik
 npm run dev
 ```
 
-## Flow hoạt động
+## How It Works
 
-1. Frontend check `VITE_USE_PROXY` trong `.env`
-2. Nếu `true`: Load YouTube API qua `/api/proxy/youtube-api`
-3. Backend fetch từ YouTube và trả về
-4. Nếu proxy fail, tự động fallback về direct connection
-5. YouTube API load thành công, video player hoạt động bình thường
+1. Frontend checks `VITE_USE_PROXY` in `.env`
+2. If `true`: Load YouTube API through `/api/proxy/youtube-api`
+3. Backend fetches from YouTube and returns it
+4. If proxy fails, automatically fallback to direct connection
+5. YouTube API loads successfully, video player works normally
 
 ## Troubleshooting
 
-### Proxy không hoạt động
+### Proxy not working
 
-1. Kiểm tra server đang chạy:
+1. Check if server is running:
    ```bash
    curl http://localhost:3001/health
    ```
 
-2. Kiểm tra proxy endpoint:
+2. Check proxy endpoint:
    ```bash
    curl http://localhost:3001/api/proxy/health
    ```
 
-3. Kiểm tra logs trong console của browser - sẽ có thông báo về method đang sử dụng
+3. Check logs in browser console - there will be messages about the method being used
 
-### Vẫn bị block
+### Still blocked
 
-1. Đảm bảo `VITE_USE_PROXY=true` trong `.env`
-2. Restart cả server và frontend sau khi thay đổi `.env`
-3. Clear browser cache và reload
-4. Kiểm tra network tab trong DevTools để xem request có đi qua proxy không
+1. Ensure `VITE_USE_PROXY=true` in `.env`
+2. Restart both server and frontend after changing `.env`
+3. Clear browser cache and reload
+4. Check network tab in DevTools to see if request goes through proxy
 
 ### Production deployment
 
-Khi deploy lên production (Vercel, etc.):
+When deploying to production (Vercel, etc.):
 
-1. Set environment variable `VITE_USE_PROXY=true` trong Vercel dashboard
-2. Đảm bảo `VITE_API_URL` trỏ đúng backend URL
-3. Redeploy frontend sau khi set env vars
+1. Set environment variable `VITE_USE_PROXY=true` in Vercel dashboard
+2. Ensure `VITE_API_URL` points to the correct backend URL
+3. Redeploy frontend after setting env vars
 
 

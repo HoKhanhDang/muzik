@@ -1,6 +1,6 @@
 /**
  * Services Index
- * Export tất cả services để import dễ dàng
+ * Export all services for easy import
  */
 export { apiClient } from './apiClient.js'
 export { authService } from './authService.js'

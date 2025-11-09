@@ -1,6 +1,6 @@
 /**
  * Playlist Service
- * Xử lý các API liên quan đến playlists
+ * Handle APIs related to playlists
  */
 import { apiClient } from './apiClient.js'
 import { API_ENDPOINTS } from '../constants/api.js'
@@ -8,12 +8,12 @@ import { getCurrentUserId } from '../utils/user.js'
 
 export const playlistService = {
   /**
-   * Lấy tất cả playlists
+   * Get all playlists
    * @param {Object} params - { user_id?, type? }
-   * @returns {Promise<Array>} Danh sách playlists
+   * @returns {Promise<Array>} List of playlists
    */
   getAll: async (params = {}) => {
-    // Tự động thêm user_id nếu chưa có
+    // Automatically add user_id if not present
     if (!params.user_id) {
       const userId = getCurrentUserId()
       if (userId) {
@@ -24,28 +24,28 @@ export const playlistService = {
   },
 
   /**
-   * Lấy playlist theo ID (bao gồm items)
+   * Get playlist by ID (including items)
    * @param {number|string} id - Playlist ID
-   * @returns {Promise<Object>} Playlist object với items
+   * @returns {Promise<Object>} Playlist object with items
    */
   getById: async (id) => {
     return apiClient.get(`${API_ENDPOINTS.PLAYLISTS}/${id}`)
   },
 
   /**
-   * Tạo playlist mới
+   * Create new playlist
    * @param {Object} data - { name, description?, type? ('video' | 'film'), user_id? }
    * @returns {Promise<Object>} { id, message }
    */
   create: async (data) => {
-    // Tự động thêm user_id nếu chưa có
+    // Automatically add user_id if not present
     if (!data.user_id) {
       const userId = getCurrentUserId()
       if (userId) {
         data.user_id = userId
       }
     }
-    // Normalize và validate type - đảm bảo luôn là 'video' hoặc 'film'
+    // Normalize and validate type - ensure it's always 'video' or 'film'
     if (data.type) {
       const normalizedType = String(data.type).toLowerCase().trim()
       data.type = (normalizedType === 'video' || normalizedType === 'film') ? normalizedType : 'film'
@@ -56,7 +56,7 @@ export const playlistService = {
   },
 
   /**
-   * Cập nhật playlist
+   * Update playlist
    * @param {number|string} id - Playlist ID
    * @param {Object} data - { name?, description? }
    * @returns {Promise<Object>} { message }
@@ -66,7 +66,7 @@ export const playlistService = {
   },
 
   /**
-   * Xóa playlist
+   * Delete playlist
    * @param {number|string} id - Playlist ID
    * @returns {Promise<Object>} { message }
    */
@@ -75,7 +75,7 @@ export const playlistService = {
   },
 
   /**
-   * Thêm item vào playlist
+   * Add item to playlist
    * @param {number|string} playlistId - Playlist ID
    * @param {Object} data - { film_id?, video_id?, position? }
    * @returns {Promise<Object>} { id, message }
@@ -85,7 +85,7 @@ export const playlistService = {
   },
 
   /**
-   * Xóa item khỏi playlist
+   * Remove item from playlist
    * @param {number|string} playlistId - Playlist ID
    * @param {number|string} itemId - Item ID
    * @returns {Promise<Object>} { message }

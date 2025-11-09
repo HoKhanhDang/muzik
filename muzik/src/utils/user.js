@@ -1,11 +1,11 @@
 /**
  * User Utilities
- * Helper functions để lấy thông tin user hiện tại
+ * Helper functions to get current user information
  */
 
 /**
- * Lấy current user từ localStorage
- * @returns {Object|null} User object hoặc null
+ * Get current user from localStorage
+ * @returns {Object|null} User object or null
  */
 export const getCurrentUser = () => {
   try {
@@ -19,8 +19,8 @@ export const getCurrentUser = () => {
 }
 
 /**
- * Lấy user ID của current user
- * @returns {number|null} User ID hoặc null
+ * Get user ID of current user
+ * @returns {number|null} User ID or null
  */
 export const getCurrentUserId = () => {
   const user = getCurrentUser()
@@ -28,7 +28,7 @@ export const getCurrentUserId = () => {
 }
 
 /**
- * Kiểm tra user đã đăng nhập chưa
+ * Check if user is logged in
  * @returns {boolean}
  */
 export const isAuthenticated = () => {

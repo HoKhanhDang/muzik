@@ -83,19 +83,19 @@ const fetchPlaylists = async () => {
 
 const handleAddToPlaylist = async () => {
   if (!selectedPlaylistId.value) {
-    alert('Vui lòng chọn một playlist')
+    alert('Please select a playlist')
     return
   }
 
   const playlist = playlists.value.find(p => p.id === selectedPlaylistId.value)
   if (!playlist) {
-    alert('Playlist không tồn tại')
+    alert('Playlist does not exist')
     return
   }
 
   // Check if video is already in playlist
   if (isVideoInPlaylist(selectedPlaylistId.value)) {
-    alert('Video này đã có trong playlist!')
+    alert('This video is already in the playlist!')
     return
   }
 
@@ -149,9 +149,9 @@ onMounted(() => {
   <div v-if="show" class="dialog-overlay" @click.self="handleClose">
     <div class="dialog-content" @click.stop>
       <div class="dialog-header">
-        <h3>Thêm vào Playlist</h3>
+        <h3>Add to Playlist</h3>
         <div class="header-actions">
-          <button @click="fetchPlaylists" class="refresh-btn" :disabled="loading" title="Làm mới danh sách">
+          <button @click="fetchPlaylists" class="refresh-btn" :disabled="loading" title="Refresh list">
             🔄
           </button>
           <button @click="handleClose" class="close-btn">✖</button>
@@ -164,18 +164,18 @@ onMounted(() => {
           <p class="video-id-text">{{ video?.video_id }}</p>
         </div>
 
-        <div v-if="loading" class="loading">Đang tải playlists...</div>
+        <div v-if="loading" class="loading">Loading playlists...</div>
         
         <div v-else-if="!hasPlaylists" class="empty-state">
-          <p>Bạn chưa có playlist nào. Hãy tạo playlist mới trước!</p>
+          <p>You don't have any playlists yet. Create a new playlist first!</p>
           <button @click="fetchPlaylists" class="retry-btn" style="margin-top: 12px;">
-            🔄 Thử lại
+            🔄 Retry
           </button>
         </div>
 
         <div v-else class="playlists-list">
           <div v-if="videoPlaylists.length > 0" class="playlist-group">
-            <h4 class="group-title">🎬 Video Playlists (Có thể thêm video)</h4>
+            <h4 class="group-title">🎬 Video Playlists (Can add videos)</h4>
             <div class="playlist-options">
               <label
                 v-for="playlist in videoPlaylists"
@@ -195,19 +195,19 @@ onMounted(() => {
                 />
                 <span class="playlist-name">{{ playlist.name }}</span>
                 <span v-if="playlist.description" class="playlist-description">{{ playlist.description }}</span>
-                <span v-if="isVideoInPlaylist(playlist.id)" class="already-added-badge" title="Video đã có trong playlist này">✓ Đã thêm</span>
+                <span v-if="isVideoInPlaylist(playlist.id)" class="already-added-badge" title="Video already in this playlist">✓ Already Added</span>
               </label>
             </div>
           </div>
 
           <div v-if="filmPlaylists.length > 0" class="playlist-group">
-            <h4 class="group-title">🎬 Film Playlists (Không thể thêm video)</h4>
+            <h4 class="group-title">🎬 Film Playlists (Cannot add videos)</h4>
             <div class="playlist-options">
               <label
                 v-for="playlist in filmPlaylists"
                 :key="playlist.id"
                 class="playlist-option playlist-option-disabled"
-                title="Không thể thêm video vào film playlist"
+                title="Cannot add videos to film playlist"
               >
                 <input
                   type="radio"
@@ -223,22 +223,22 @@ onMounted(() => {
           </div>
 
           <div v-if="!hasVideoPlaylists && hasPlaylists" class="empty-video-playlists">
-            <p class="warning-text">⚠️ Bạn chưa có video playlist nào để thêm video vào.</p>
-            <p class="info-text">Hãy tạo một video playlist mới (chọn type là "Video" khi tạo).</p>
+            <p class="warning-text">⚠️ You don't have any video playlists to add videos to.</p>
+            <p class="info-text">Create a new video playlist (select "Video" type when creating).</p>
           </div>
         </div>
       </div>
 
       <div class="dialog-footer">
-        <button @click="handleClose" class="cancel-btn" :disabled="adding">Hủy</button>
+        <button @click="handleClose" class="cancel-btn" :disabled="adding">Cancel</button>
         <button
           @click="handleAddToPlaylist"
           class="add-btn"
           :disabled="!selectedPlaylistId || adding || (selectedPlaylistId && isVideoInPlaylist(selectedPlaylistId))"
         >
-          <span v-if="adding">Đang thêm...</span>
-          <span v-else-if="selectedPlaylistId && isVideoInPlaylist(selectedPlaylistId)">Đã có trong playlist</span>
-          <span v-else>Thêm vào Playlist</span>
+          <span v-if="adding">Adding...</span>
+          <span v-else-if="selectedPlaylistId && isVideoInPlaylist(selectedPlaylistId)">Already in Playlist</span>
+          <span v-else>Add to Playlist</span>
         </button>
       </div>
     </div>

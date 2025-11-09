@@ -40,12 +40,12 @@ defineExpose({
 <template>
   <div class="movies-tab">
     <div class="movies-header">
-      <h2 class="tab-title">🎥 Xem Phim</h2>
+      <h2 class="tab-title">🎥 Watch Movies</h2>
       <div class="search-container">
         <input
           v-model="searchQuery"
           type="text"
-          placeholder="Tìm kiếm phim..."
+          placeholder="Search movies..."
           class="search-input"
           @keyup.enter="handleSearch"
         />
@@ -53,10 +53,10 @@ defineExpose({
       </div>
     </div>
 
-    <div v-if="loading" class="loading-state">Đang tải...</div>
+    <div v-if="loading" class="loading-state">Loading...</div>
 
     <div v-else-if="filteredMovies.length === 0" class="empty-state">
-      <p>Chưa có phim nào. Hãy thêm phim mới!</p>
+      <p>No movies yet. Please add new movies!</p>
     </div>
 
     <div v-else class="movies-grid">

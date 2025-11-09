@@ -1,6 +1,6 @@
 /**
  * Constants Index
- * Export tất cả constants từ một nơi để dễ quản lý
+ * Export all constants from one place for easy management
  */
 
 export * from './routes.js'

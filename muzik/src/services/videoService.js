@@ -1,6 +1,6 @@
 /**
  * Video Service
- * Xử lý các API liên quan đến videos
+ * Handle APIs related to videos
  */
 import { apiClient } from './apiClient.js'
 import { API_ENDPOINTS } from '../constants/api.js'
@@ -8,12 +8,12 @@ import { getCurrentUserId } from '../utils/user.js'
 
 export const videoService = {
   /**
-   * Lấy tất cả videos
+   * Get all videos
    * @param {Object} params - { user_id? }
-   * @returns {Promise<Array>} Danh sách videos
+   * @returns {Promise<Array>} List of videos
    */
   getAll: async (params = {}) => {
-    // Tự động filter theo user_id
+    // Automatically filter by user_id
     if (!params.user_id) {
       const userId = getCurrentUserId()
       if (userId) {
@@ -24,7 +24,7 @@ export const videoService = {
   },
 
   /**
-   * Lấy video theo ID
+   * Get video by ID
    * @param {number|string} id - Video ID
    * @returns {Promise<Object>} Video object
    */
@@ -33,12 +33,12 @@ export const videoService = {
   },
 
   /**
-   * Tạo video mới
+   * Create new video
    * @param {Object} data - { title, video_id, youtube_url?, thumbnail_url?, duration?, user_id? }
    * @returns {Promise<Object>} { id, message, video_id }
    */
   create: async (data) => {
-    // Tự động thêm user_id nếu chưa có
+    // Automatically add user_id if not present
     if (!data.user_id) {
       const userId = getCurrentUserId()
       if (userId) {
@@ -49,7 +49,7 @@ export const videoService = {
   },
 
   /**
-   * Cập nhật video
+   * Update video
    * @param {number|string} id - Video ID
    * @param {Object} data - { title?, video_id?, youtube_url?, thumbnail_url?, duration? }
    * @returns {Promise<Object>} { message }
@@ -59,7 +59,7 @@ export const videoService = {
   },
 
   /**
-   * Xóa video
+   * Delete video
    * @param {number|string} id - Video ID
    * @returns {Promise<Object>} { message }
    */
@@ -68,8 +68,8 @@ export const videoService = {
   },
 
   /**
-   * Lấy tất cả video IDs
-   * @returns {Promise<Array<string>>} Danh sách video IDs
+   * Get all video IDs
+   * @returns {Promise<Array<string>>} List of video IDs
    */
   getVideoIds: async () => {
     const userId = getCurrentUserId()
@@ -78,10 +78,10 @@ export const videoService = {
   },
 
   /**
-   * Tìm kiếm video trên YouTube
-   * @param {string} query - Từ khóa tìm kiếm
-   * @param {number} maxResults - Số kết quả tối đa (default: 20)
-   * @returns {Promise<Array>} Danh sách video
+   * Search videos on YouTube
+   * @param {string} query - Search keywords
+   * @param {number} maxResults - Maximum number of results (default: 20)
+   * @returns {Promise<Array>} List of videos
    */
   searchYouTube: async (query, maxResults = 20) => {
     const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'

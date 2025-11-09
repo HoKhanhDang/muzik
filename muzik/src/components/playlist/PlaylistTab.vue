@@ -74,7 +74,7 @@ const handleCloseDialog = () => {
 }
 
 const handleVideoAdded = (data) => {
-  alert(`Đã thêm "${selectedVideo.value?.title}" vào playlist "${data.playlistName}"`)
+  alert(`Added "${selectedVideo.value?.title}" to playlist "${data.playlistName}"`)
   handleCloseDialog()
 }
 </script>

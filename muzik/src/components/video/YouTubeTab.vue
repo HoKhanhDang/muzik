@@ -44,14 +44,14 @@ const handleSearch = async () => {
   searchError.value = ''
   searchResults.value = []
   
-  // Đảm bảo viewMode là 'search' để hiển thị kết quả
+  // Ensure viewMode is 'search' to display results
   viewMode.value = 'search'
   
   try {
     const results = await videoService.searchYouTube(searchQuery.value, 20)
     searchResults.value = results
   } catch (error) {
-    searchError.value = 'Không thể tìm kiếm. Vui lòng thử lại hoặc kiểm tra API key.'
+    searchError.value = 'Unable to search. Please try again or check API key.'
     console.error('Search error:', error)
   } finally {
     searching.value = false
@@ -66,9 +66,9 @@ const handleAddToPlaylist = async (video) => {
       youtube_url: `https://www.youtube.com/watch?v=${video.videoId}`,
       thumbnail_url: video.thumbnail
     })
-    alert('Đã thêm video vào playlist!')
+    alert('Video added to playlist!')
   } catch (error) {
-    alert('Lỗi khi thêm video: ' + (error.message || 'Unknown error'))
+    alert('Error adding video: ' + (error.message || 'Unknown error'))
   }
 }
 
@@ -113,7 +113,7 @@ const handleSwitchToInstant = () => {
         :class="{ active: viewMode === 'search' }"
         class="mode-btn"
       >
-        🔍 Tìm kiếm
+        🔍 Search
       </button>
       <button
         @click="handleSwitchToInstant"
@@ -126,8 +126,8 @@ const handleSwitchToInstant = () => {
 
     <!-- Search Mode -->
     <div v-if="viewMode === 'search'" class="search-mode">
-      <h3>🔍 Tìm kiếm Video YouTube</h3>
-      <p class="tab-description">Tìm và phát video từ YouTube ngay lập tức</p>
+      <h3>🔍 Search YouTube Videos</h3>
+      <p class="tab-description">Search and play videos from YouTube instantly</p>
 
       <div class="search-section">
         <div class="search-box">
@@ -135,19 +135,19 @@ const handleSwitchToInstant = () => {
             v-model="searchQuery"
             @keyup.enter="handleSearch"
             type="text"
-            placeholder="Nhập từ khóa tìm kiếm..."
+            placeholder="Enter search keywords..."
             class="search-input"
             :disabled="searching"
           />
           <button @click="handleSearch" :disabled="searching || !searchQuery.trim()" class="search-btn">
-            {{ searching ? 'Đang tìm...' : '🔍 Tìm kiếm' }}
+            {{ searching ? 'Searching...' : '🔍 Search' }}
           </button>
         </div>
       </div>
 
       <!-- Search Results -->
       <div v-if="searchResults.length > 0" class="results-section">
-        <h4 class="results-header">Kết quả tìm kiếm ({{ searchResults.length }})</h4>
+        <h4 class="results-header">Search Results ({{ searchResults.length }})</h4>
         <div class="video-grid">
           <div v-for="video in searchResults" :key="video.videoId" class="video-card">
             <img :src="video.thumbnail" :alt="video.title" class="thumbnail" />
@@ -156,10 +156,10 @@ const handleSwitchToInstant = () => {
               <p class="channel-name">{{ video.channelTitle }}</p>
               <div class="video-actions">
                 <button @click="handlePlayNow(video)" class="btn-play">
-                  ▶️ Phát ngay
+                  ▶️ Play Now
                 </button>
                 <button @click="handleAddToPlaylist(video)" class="btn-add">
-                  ➕ Thêm vào playlist
+                  ➕ Add to Playlist
                 </button>
               </div>
             </div>
@@ -174,7 +174,7 @@ const handleSwitchToInstant = () => {
 
       <!-- Empty State -->
       <div v-if="!searching && searchResults.length === 0 && !searchError && searchQuery" class="empty-state">
-        <p>Không tìm thấy video nào. Hãy thử từ khóa khác.</p>
+        <p>No videos found. Try different keywords.</p>
       </div>
     </div>
 
@@ -197,25 +197,6 @@ const handleSwitchToInstant = () => {
               ▶️ Play Now
             </button>
           </div>
-        </div>
-      </div>
-
-      <div class="quick-actions">
-        <h4>Quick Actions:</h4>
-        <div class="quick-buttons">
-          <button
-            @click="$emit('play-previous')"
-            :disabled="videoIds.length <= 1"
-            class="quick-btn"
-          >
-            ⏮️ Previous
-          </button>
-          <button @click="$emit('play-next')" :disabled="videoIds.length <= 1" class="quick-btn">
-            ⏭️ Next
-          </button>
-          <button @click="$emit('toggle-mute')" class="quick-btn">
-            {{ isMuted ? '🔇' : '🔊' }} {{ isMuted ? 'Unmute' : 'Mute' }}
-          </button>
         </div>
       </div>
 

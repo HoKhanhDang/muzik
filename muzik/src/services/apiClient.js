@@ -1,6 +1,6 @@
 /**
  * Base API Client
- * Utility để xử lý HTTP requests với authentication
+ * Utility to handle HTTP requests with authentication
  */
 import { API_BASE } from '../constants/api.js'
 import { eventBus } from '../utils/eventBus.js'
