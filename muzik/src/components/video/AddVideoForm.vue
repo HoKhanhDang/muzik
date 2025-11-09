@@ -1,10 +1,46 @@
 <script setup>
-defineProps({
+const props = defineProps({
   newVideo: Object,
   loading: Boolean,
 })
 
-defineEmits(['update:newVideo', 'add-video', 'fetch-details', 'cancel'])
+const emit = defineEmits(['update:newVideo', 'add-video', 'fetch-details', 'cancel'])
+
+// Handle double-click to paste from clipboard for YouTube URL
+const handleDoubleClickPasteUrl = async (event) => {
+  event.target.focus()
+  
+  try {
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      const text = await navigator.clipboard.readText()
+      if (text && text.trim()) {
+        const url = text.trim()
+        emit('update:newVideo', { ...props.newVideo, youtube_url: url })
+        
+        // Auto-select text after pasting
+        setTimeout(() => {
+          event.target.select()
+        }, 10)
+        
+        // Auto-fetch video details after a short delay to ensure URL is updated
+        setTimeout(() => {
+          emit('fetch-details')
+        }, 100)
+      }
+    } else {
+      console.warn('Clipboard API not available')
+      event.target.select()
+      alert('Clipboard access not available. Please use Ctrl+V (Cmd+V on Mac) to paste.')
+    }
+  } catch (error) {
+    console.warn('Failed to read clipboard:', error)
+    event.target.select()
+    if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+      alert('Clipboard access denied. Please allow clipboard access or use Ctrl+V (Cmd+V on Mac) to paste.')
+    }
+  }
+}
+
 </script>
 
 <template>
@@ -13,21 +49,16 @@ defineEmits(['update:newVideo', 'add-video', 'fetch-details', 'cancel'])
 
     <div class="form-group">
       <label>YouTube URL:</label>
+      <span class="help-text">💡 Double-click to paste from clipboard</span>
       <input
         :value="newVideo.youtube_url"
         @input="$emit('update:newVideo', { ...newVideo, youtube_url: $event.target.value })"
+        @dblclick="handleDoubleClickPasteUrl"
         placeholder="https://youtube.com/watch?v=..."
+        title="Double-click to paste from clipboard"
       />
     </div>
 
-    <div class="form-group">
-      <label>OR Video ID:</label>
-      <input
-        :value="newVideo.video_id"
-        @input="$emit('update:newVideo', { ...newVideo, video_id: $event.target.value })"
-        placeholder="XbLemOwzdxk"
-      />
-    </div>
 
     <div class="form-group">
       <label>Title:</label>
@@ -48,14 +79,6 @@ defineEmits(['update:newVideo', 'add-video', 'fetch-details', 'cancel'])
       <img :src="newVideo.thumbnail_url" class="thumbnail-preview" />
     </div>
 
-    <div class="form-group">
-      <label>Duration (optional):</label>
-      <input
-        :value="newVideo.duration"
-        @input="$emit('update:newVideo', { ...newVideo, duration: $event.target.value })"
-        placeholder="3:45"
-      />
-    </div>
 
     <div class="form-actions">
       <button @click="$emit('add-video')" :disabled="loading" class="save-btn">
@@ -88,6 +111,15 @@ defineEmits(['update:newVideo', 'add-video', 'fetch-details', 'cancel'])
   margin-bottom: 5px;
   color: #ccc;
   font-size: 14px;
+}
+
+.help-text {
+  display: block;
+  margin-bottom: 6px;
+  color: #888;
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.4;
 }
 
 .form-group input {

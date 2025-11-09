@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { NAVIGATION_ITEMS, ROUTES } from '../../constants/routes.js'
+import { getSvgIconPath } from '../../constants/icons.js'
 
 const props = defineProps({
   showSidebar: Boolean,
@@ -61,7 +62,9 @@ onUnmounted(() => {
         :class="{ active: activeTab === item.id }"
         class="tab-btn"
       >
-        <span>{{ item.icon }}</span>
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="currentColor">
+          <path :d="getSvgIconPath(item.icon)" />
+        </svg>
         <span>{{ item.label }}</span>
       </button>
     </div>
@@ -78,7 +81,7 @@ onUnmounted(() => {
           <path d="M12 3v9.28c-.47-.17-.97-.28-1.5-.28C8.01 12 6 14.01 6 16.5S8.01 21 10.5 21c2.31 0 4.2-1.75 4.45-4H15V6h4V3h-7z" />
         </svg>
         <svg v-else class="audio-icon" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M4 6.47L5.76 10H20v8H5.76L4 21.53V6.47M2 4v18l3-6h15c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2H5l-3-6z"/>
+          <path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z"/>
         </svg>
         <span class="audio-label">{{ audioOnlyMode ? 'Video Mode' : 'Audio Mode' }}</span>
       </button>
@@ -88,10 +91,10 @@ onUnmounted(() => {
           <svg class="profile-icon" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
           </svg>
-          <svg v-if="showProfileMenu" class="chevron-icon" viewBox="0 0 24 24" fill="currentColor">
+          <svg v-if="showProfileMenu" class="chevron-icon" viewBox="0 0 24 24" fill="#4ecdc4">
             <path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/>
           </svg>
-          <svg v-else class="chevron-icon" viewBox="0 0 24 24" fill="currentColor">
+          <svg v-else class="chevron-icon" viewBox="0 0 24 24" fill="#4ecdc4">
             <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/>
           </svg>
         </button>
@@ -139,6 +142,7 @@ onUnmounted(() => {
 .app-header-logo {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   flex-shrink: 0;
   min-width: 0;
@@ -152,12 +156,15 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1;
+  display: flex;
+  align-items: center;
 }
 
 .sidebar-toggle-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: none;
   border: none;
-  color: white;
+  color: #ccc;
   width: 40px;
   height: 40px;
   border-radius: 8px;
@@ -166,9 +173,10 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   transition: all 0.3s ease;
   flex-shrink: 0;
+  line-height: 1;
+  padding: 0;
 }
 
 /* Large Desktop (>= 1440px) */
@@ -401,8 +409,9 @@ onUnmounted(() => {
     display: none;
   }
 
-  .tab-btn span:first-child {
-    font-size: 14px;
+  .tab-icon {
+    width: 18px;
+    height: 18px;
   }
 
   .header-actions {
@@ -447,11 +456,14 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   transition: all 0.3s ease;
+  line-height: 1;
+  margin: 0;
+  padding: 0;
 }
 
 .sidebar-toggle-btn:hover {
-  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
-  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.5);
+  background: rgba(78, 205, 196, 0.1);
+  color: #4ecdc4;
   transform: translateY(-2px);
 }
 
@@ -461,7 +473,6 @@ onUnmounted(() => {
 
 .sidebar-toggle-btn:active {
   transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
 }
 
 .tab-navigation {
@@ -530,6 +541,21 @@ onUnmounted(() => {
   box-shadow: 0 2px 8px rgba(78, 205, 196, 0.3);
 }
 
+.tab-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+}
+
+.tab-btn:hover .tab-icon {
+  transform: scale(1.1);
+}
+
+.tab-btn.active .tab-icon {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
+
 .header-actions {
   display: flex;
   align-items: center;
@@ -538,58 +564,130 @@ onUnmounted(() => {
 }
 
 .audio-mode-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: none;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #667eea 100%);
+  background-size: 200% 200%;
+  border: 2px solid rgba(255, 255, 255, 0.2);
   color: white;
-  height: 40px;
-  padding: 0 12px;
-  border-radius: 8px;
+  height: 42px;
+  padding: 0 18px;
+  border-radius: 12px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  gap: 10px;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 
+    0 4px 16px rgba(102, 126, 234, 0.4),
+    0 0 0 0 rgba(102, 126, 234, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
   flex-shrink: 0;
   white-space: nowrap;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  position: relative;
+  overflow: hidden;
+}
+
+.audio-mode-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.5s ease;
+}
+
+.audio-mode-btn:hover::before {
+  left: 100%;
 }
 
 .audio-mode-btn:hover {
-  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+  background-position: 100% 0;
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 
+    0 8px 24px rgba(102, 126, 234, 0.5),
+    0 0 20px rgba(102, 126, 234, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 .audio-mode-btn:active {
-  transform: translateY(0);
+  transform: translateY(-1px) scale(0.98);
+  box-shadow: 
+    0 4px 12px rgba(102, 126, 234, 0.4),
+    inset 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .audio-mode-btn.active {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  box-shadow: 0 4px 12px rgba(240, 147, 251, 0.4);
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 50%, #f093fb 100%);
+  background-size: 200% 200%;
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow: 
+    0 4px 16px rgba(240, 147, 251, 0.5),
+    0 0 0 0 rgba(240, 147, 251, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 
+      0 4px 16px rgba(240, 147, 251, 0.5),
+      0 0 0 0 rgba(240, 147, 251, 0.6),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  }
+  50% {
+    box-shadow: 
+      0 4px 16px rgba(240, 147, 251, 0.6),
+      0 0 20px rgba(240, 147, 251, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
 }
 
 .audio-mode-btn.active:hover {
-  background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);
-  box-shadow: 0 6px 16px rgba(240, 147, 251, 0.5);
+  background-position: 100% 0;
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 
+    0 8px 24px rgba(240, 147, 251, 0.6),
+    0 0 25px rgba(240, 147, 251, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+  animation: none;
 }
 
 .audio-icon {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
-  transition: transform 0.3s ease;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
 }
 
 .audio-label {
   transition: all 0.3s ease;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .audio-mode-btn:hover .audio-icon {
-  transform: scale(1.1);
+  transform: scale(1.15) rotate(5deg);
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+}
+
+.audio-mode-btn.active .audio-icon {
+  animation: icon-pulse 2s ease-in-out infinite;
+}
+
+@keyframes icon-pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
 }
 
 .audio-mode-btn:disabled,
@@ -622,17 +720,17 @@ onUnmounted(() => {
   background: linear-gradient(135deg, #4ecdc4 0%, #45b7aa 100%);
   border: none;
   color: white;
-  padding: 7px 10px;
-  border-radius: 6px;
+  padding: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
   transition: all 0.3s ease;
   box-shadow: 0 4px 12px rgba(78, 205, 196, 0.3);
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
+  position: relative;
   flex-shrink: 0;
 }
 
@@ -647,14 +745,21 @@ onUnmounted(() => {
 }
 
 .profile-icon {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
 }
 
 .chevron-icon {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   transition: transform 0.3s ease;
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  background: white;
+  border-radius: 50%;
+  padding: 2px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .profile-dropdown {

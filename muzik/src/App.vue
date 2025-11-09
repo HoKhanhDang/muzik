@@ -336,9 +336,7 @@ const initializePlayer = () => {
           // Get initial duration
           try {
             const dur = event.target.getDuration()
-            if (dur !== undefined && !isNaN(dur) && dur > 0) {
-              duration.value = dur
-            }
+            updateVideoDuration(dur)
           } catch (error) {
             console.warn('Error getting duration:', error)
           }
@@ -501,6 +499,18 @@ const togglePlay = () => {
   }
 }
 
+// Helper function to update duration in video object
+const updateVideoDuration = (dur) => {
+  if (dur !== undefined && !isNaN(dur) && dur > 0) {
+    duration.value = dur
+    // Update duration in videos array for current video
+    const currentVideo = videos.value[currentVideoIndex.value]
+    if (currentVideo) {
+      currentVideo.duration = dur
+    }
+  }
+}
+
 const startTimeTracking = () => {
   if (timeUpdateInterval.value) {
     clearInterval(timeUpdateInterval.value)
@@ -515,7 +525,7 @@ const startTimeTracking = () => {
           currentTime.value = time
         }
         if (dur !== undefined && !isNaN(dur) && dur > 0) {
-          duration.value = dur
+          updateVideoDuration(dur)
         }
       } catch (error) {
         console.warn('Error getting player time:', error)
@@ -1610,7 +1620,7 @@ main {
   background-color: #2a2a2a;
   border-radius: 10px;
   padding: 15px;
-  overflow: hidden;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   transition: all 0.3s ease;

@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from 'vue'
+import Icon from '../common/Icon.vue'
 
 const emit = defineEmits(['submit', 'cancel'])
 
@@ -83,8 +84,8 @@ const handleCancel = () => {
         :disabled="loading"
         class="form-select"
       >
-        <option value="film">🎬 Film</option>
-        <option value="video">🎥 Video</option>
+        <option value="film">Film</option>
+        <option value="video">Video</option>
       </select>
     </div>
 

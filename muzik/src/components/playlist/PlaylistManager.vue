@@ -4,6 +4,7 @@ import { playlistService } from '../../services/index.js'
 import PlaylistList from './PlaylistList.vue'
 import PlaylistForm from './PlaylistForm.vue'
 import PlaylistDetail from './PlaylistDetail.vue'
+import Icon from '../common/Icon.vue'
 
 const emit = defineEmits(['play-item', 'play-all'])
 
@@ -144,7 +145,10 @@ onMounted(() => {
     <div v-if="viewMode === 'list'" class="playlist-list-view">
       <div class="manager-header">
         <h2>My Playlists</h2>
-        <button @click="handleShowCreateForm" class="create-btn">➕ Create Playlist</button>
+        <button @click="handleShowCreateForm" class="create-btn">
+          <Icon name="add" :size="16" icon-class="btn-icon" />
+          <span>Create Playlist</span>
+        </button>
       </div>
 
       <div v-if="loading && playlists.length === 0" class="loading">Loading playlists...</div>
@@ -155,7 +159,10 @@ onMounted(() => {
 
       <div v-else class="playlists-container">
         <div v-if="filmPlaylists.length > 0" class="playlist-section">
-          <h3 class="section-title">🎬 Film Playlists ({{ filmPlaylists.length }})</h3>
+          <h3 class="section-title">
+            <Icon name="film_playlists" :size="20" icon-class="section-icon" />
+            Film Playlists ({{ filmPlaylists.length }})
+          </h3>
           <PlaylistList
             :playlists="filmPlaylists"
             @view="handleViewPlaylist"
@@ -164,7 +171,10 @@ onMounted(() => {
         </div>
 
         <div v-if="videoPlaylists.length > 0" class="playlist-section">
-          <h3 class="section-title">🎥 Video Playlists ({{ videoPlaylists.length }})</h3>
+          <h3 class="section-title">
+            <Icon name="video_playlists" :size="20" icon-class="section-icon" />
+            Video Playlists ({{ videoPlaylists.length }})
+          </h3>
           <PlaylistList
             :playlists="videoPlaylists"
             @view="handleViewPlaylist"
@@ -233,6 +243,14 @@ onMounted(() => {
   font-weight: 600;
   transition: all 0.3s ease;
   box-shadow: 0 4px 12px rgba(78, 205, 196, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.create-btn .btn-icon {
+  flex-shrink: 0;
 }
 
 .create-btn:hover {
@@ -294,6 +312,13 @@ onMounted(() => {
   margin-bottom: 15px;
   padding-bottom: 10px;
   border-bottom: 1px solid rgba(78, 205, 196, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-icon {
+  flex-shrink: 0;
 }
 
 .playlist-list-view,

@@ -1,5 +1,7 @@
 <script setup>
 import { watch } from 'vue'
+import Icon from '../common/Icon.vue'
+import { getPlaylistIconPath } from '../../constants/icons.js'
 
 const props = defineProps({
   playlists: {
@@ -46,7 +48,9 @@ const handleDelete = (id, event) => {
   <div class="playlist-list">
     <div v-for="playlist in playlists" :key="playlist.id" class="playlist-card" @click="handleView(playlist)">
       <div class="playlist-info">
-        <div class="playlist-icon">{{ playlist.type === 'film' ? '🎬' : '🎥' }}</div>
+        <div class="playlist-icon">
+          <Icon :name="playlist.type === 'film' ? 'film_playlists' : 'video_playlists'" :size="32" />
+        </div>
         <div class="playlist-details">
           <h4 class="playlist-name">{{ playlist.name }}</h4>
           <p v-if="playlist.description" class="playlist-description">{{ playlist.description }}</p>
@@ -104,8 +108,11 @@ const handleDelete = (id, event) => {
 }
 
 .playlist-icon {
-  font-size: 32px;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4ecdc4;
 }
 
 .playlist-details {

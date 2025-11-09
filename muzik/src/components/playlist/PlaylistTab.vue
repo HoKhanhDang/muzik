@@ -5,6 +5,8 @@ import PlayerControls from '../video/PlayerControls.vue'
 import AddVideoForm from '../video/AddVideoForm.vue'
 import VideoListItem from '../video/VideoListItem.vue'
 import AddToPlaylistDialog from './AddToPlaylistDialog.vue'
+import Icon from '../common/Icon.vue'
+import { getViewIconPath, getCompactModeIconPath } from '../../constants/icons.js'
 
 defineProps({
   currentVideo: Object,
@@ -87,14 +89,16 @@ const handleVideoAdded = (data) => {
         :class="{ active: viewMode === 'videos' }"
         class="switch-btn"
       >
-        🎬 Videos
+        <Icon name="videos" :size="18" icon-class="switch-icon" />
+        <span>Videos</span>
       </button>
       <button
         @click="handleSwitchView('playlists')"
         :class="{ active: viewMode === 'playlists' }"
         class="switch-btn"
       >
-        📋 Playlists
+        <Icon name="playlists" :size="18" icon-class="switch-icon" />
+        <span>Playlists</span>
       </button>
     </div>
 
@@ -117,7 +121,8 @@ const handleVideoAdded = (data) => {
 
       <div v-show="!currentVideo || isPlayerControlsVisible" class="add-video-section">
         <button @click="$emit('toggle-add-form')" class="add-btn">
-          {{ showAddForm ? '✖ Cancel' : '➕ Add Video' }}
+          <Icon :name="showAddForm ? 'cancel' : 'add'" :size="16" icon-class="btn-icon" />
+          <span>{{ showAddForm ? 'Cancel' : 'Add Video' }}</span>
         </button>
       </div>
 
@@ -135,7 +140,7 @@ const handleVideoAdded = (data) => {
         <div class="playlist-header">
           <h3>Your Videos ({{ videos.length }})</h3>
           <button @click="handleToggleCompactMode" class="compact-toggle-btn" :title="isCompactMode ? 'Expand View' : 'Compact View'">
-            {{ isCompactMode ? '📋' : '📄' }}
+            <Icon :name="isCompactMode ? 'expand_view' : 'compact_view'" :size="18" />
           </button>
         </div>
         <div v-if="loading" class="loading">Loading...</div>
@@ -211,6 +216,14 @@ const handleVideoAdded = (data) => {
   font-weight: 500;
   transition: all 0.3s ease;
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.switch-icon {
+  flex-shrink: 0;
 }
 
 .switch-btn:hover {
@@ -293,6 +306,14 @@ const handleVideoAdded = (data) => {
   box-shadow: 0 4px 12px rgba(78, 205, 196, 0.3);
   width: 100%;
   max-width: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.add-video-section .add-btn .btn-icon {
+  flex-shrink: 0;
 }
 
 .add-video-section .add-btn:hover {

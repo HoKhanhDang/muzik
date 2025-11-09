@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
+import Icon from '../common/Icon.vue'
 
 const props = defineProps({
   video: Object,
@@ -71,7 +72,9 @@ watch(
           :alt="video.title"
           @error="handleThumbnailError"
         />
-        <div v-show="!getThumbnailUrl || thumbnailError" class="placeholder-thumbnail">🎥</div>
+        <div v-show="!getThumbnailUrl || thumbnailError" class="placeholder-thumbnail">
+          <Icon name="video_playlists" :size="24" />
+        </div>
       </div>
       <div class="video-info">
         <span class="video-title">{{ video.title }}</span>
@@ -82,7 +85,7 @@ watch(
           class="add-to-playlist-btn"
           title="Add to Playlist"
         >
-          ➕
+          <Icon name="add" :size="16" />
         </button>
         <button
           @click.stop="$emit('move-to-top', index)"
@@ -90,9 +93,11 @@ watch(
           class="move-to-top-btn"
           title="Move to Top"
         >
-          ⬆️
+          <Icon name="move_up" :size="16" />
         </button>
-        <button @click.stop="$emit('delete-video', video.id)" class="delete-btn">🗑️</button>
+        <button @click.stop="$emit('delete-video', video.id)" class="delete-btn" title="Delete">
+          <Icon name="delete" :size="16" />
+        </button>
       </div>
     </div>
   </li>
@@ -223,6 +228,11 @@ li.compact .video-thumbnail {
 
 li.compact .placeholder-thumbnail {
   font-size: 18px;
+}
+
+li.compact .placeholder-thumbnail :deep(.icon) {
+  width: 18px;
+  height: 18px;
 }
 
 .video-info {

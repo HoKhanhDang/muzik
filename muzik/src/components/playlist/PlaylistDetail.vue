@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { playlistService, filmService, videoService } from '../../services/index.js'
+import Icon from '../common/Icon.vue'
 
 const props = defineProps({
   playlist: {
@@ -13,91 +14,140 @@ const emit = defineEmits(['updated', 'delete', 'play-item', 'play-all'])
 
 const loading = ref(false)
 const showAddForm = ref(false)
-const availableItems = ref([])
-const searchQuery = ref('')
+const newVideo = ref({
+  youtube_url: '',
+  title: '',
+  thumbnail_url: ''
+})
 
 const items = computed(() => {
   if (!props.playlist || !props.playlist.items) return []
   return Array.isArray(props.playlist.items) ? props.playlist.items : []
 })
 
-const filteredAvailableItems = computed(() => {
-  if (!searchQuery.value.trim()) return availableItems.value
-  const query = searchQuery.value.toLowerCase()
-  return availableItems.value.filter(item => {
-    const title = (item.title || item.film_title || item.video_title || '').toLowerCase()
-    const director = (item.director || '').toLowerCase()
-    return title.includes(query) || director.includes(query)
-  })
-})
+const extractVideoId = (url) => {
+  if (!url) return null
+  const regex = /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/
+  const match = url.match(regex)
+  return match ? match[1] : null
+}
 
-const fetchAvailableItems = async () => {
-  if (!props.playlist || !props.playlist.type) {
-    console.error('Playlist type is missing')
+const fetchVideoDetails = async () => {
+  const videoId = extractVideoId(newVideo.value.youtube_url)
+  if (!videoId) {
+    alert('Invalid YouTube URL')
     return
   }
+
   try {
     loading.value = true
-    if (props.playlist.type === 'film') {
-      const filmList = await filmService.getAll()
-      availableItems.value = filmList.map(f => ({
-        ...f,
-        item_id: f.id,
-        item_type: 'film',
-        title: f.title,
-      }))
+    const response = await fetch(`https://noembed.com/embed?url=https://www.youtube.com/watch?v=${videoId}`)
+    const data = await response.json()
+    
+    if (data.title) {
+      newVideo.value.title = data.title
+      newVideo.value.thumbnail_url = data.thumbnail_url || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
     } else {
-      const videoList = await videoService.getAll()
-      availableItems.value = videoList.map(v => ({
-        ...v,
-        item_id: v.id,
-        item_type: 'video',
-        title: v.title,
-      }))
+      throw new Error('Could not fetch video details')
     }
   } catch (error) {
-    console.error('Error fetching available items:', error)
-    alert(`Error: ${error.message || 'Failed to load items'}`)
+    console.error('Error fetching video details:', error)
+    alert(`Error: ${error.message || 'Failed to fetch video details'}`)
   } finally {
     loading.value = false
   }
 }
 
-const handleAddItem = async (item) => {
-  if (!props.playlist || !props.playlist.id || !item || !item.item_id) {
-    alert('Invalid data. Please try again.')
+const handleDoubleClickPasteUrl = async (event) => {
+  event.target.focus()
+  
+  try {
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      const text = await navigator.clipboard.readText()
+      if (text && text.trim()) {
+        const url = text.trim()
+        newVideo.value.youtube_url = url
+        
+        setTimeout(() => {
+          event.target.select()
+        }, 10)
+        
+        setTimeout(() => {
+          fetchVideoDetails()
+        }, 100)
+      }
+    } else {
+      console.warn('Clipboard API not available')
+      event.target.select()
+      alert('Clipboard access not available. Please use Ctrl+V (Cmd+V on Mac) to paste.')
+    }
+  } catch (error) {
+    console.warn('Failed to read clipboard:', error)
+    event.target.select()
+    if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+      alert('Clipboard access denied. Please allow clipboard access or use Ctrl+V (Cmd+V on Mac) to paste.')
+    }
+  }
+}
+
+const handleAddVideo = async () => {
+  if (!newVideo.value.youtube_url || !newVideo.value.title) {
+    alert('Please provide YouTube URL and title')
     return
   }
-  
-  // Check if video ID is already in playlist (more efficient check)
-  const videoId = extractVideoIdFromItem(item)
-  if (videoId && isVideoIdInPlaylist(videoId)) {
+
+  const videoId = extractVideoId(newVideo.value.youtube_url)
+  if (!videoId) {
+    alert('Invalid YouTube URL')
+    return
+  }
+
+  if (isVideoIdInPlaylist(videoId)) {
     alert('This video is already in the playlist!')
     return
   }
-  
-  // Also check by item ID for safety
-  if (isItemInPlaylist(item.item_id)) {
-    alert('This item is already in the playlist!')
-    return
-  }
-  
+
   try {
     loading.value = true
-    const data = props.playlist.type === 'film'
-      ? { film_id: item.item_id }
-      : { video_id: item.item_id }
     
-    await playlistService.addItem(props.playlist.id, data)
+    // Create video first if it's a video playlist
+    if (props.playlist.type === 'video') {
+      const videoData = {
+        video_id: videoId,
+        title: newVideo.value.title,
+        thumbnail_url: newVideo.value.thumbnail_url
+      }
+      // Create video in database (returns database ID)
+      await videoService.create(videoData)
+      
+      // Add to playlist using YouTube video ID, not database ID
+      await playlistService.addItem(props.playlist.id, { video_id: videoId })
+    } else {
+      // For film playlists, create film with video URL
+      const filmData = {
+        title: newVideo.value.title,
+        video_url: newVideo.value.youtube_url,
+        thumbnail_url: newVideo.value.thumbnail_url
+      }
+      const createdFilm = await filmService.create(filmData)
+      // For films, we use database ID as foreign key
+      await playlistService.addItem(props.playlist.id, { film_id: createdFilm.id })
+    }
+    
     emit('updated')
     showAddForm.value = false
-    searchQuery.value = ''
+    newVideo.value = { youtube_url: '', title: '', thumbnail_url: '' }
   } catch (error) {
-    console.error('Error adding item:', error)
-    alert(`Error: ${error.message || 'Failed to add item'}`)
+    console.error('Error adding video:', error)
+    alert(`Error: ${error.message || 'Failed to add video'}`)
   } finally {
     loading.value = false
   }
+}
+
+const handleCancelAdd = () => {
+  showAddForm.value = false
+  newVideo.value = { youtube_url: '', title: '', thumbnail_url: '' }
 }
 
 const handleRemoveItem = async (itemId) => {
@@ -231,12 +281,6 @@ const handlePlayItem = (item, index) => {
   })
 }
 
-const isItemInPlaylist = (itemId) => {
-  return items.value.some(item => 
-    item.film_id === itemId || item.video_id === itemId
-  )
-}
-
 const extractVideoIdFromItem = (item) => {
   if (!item) return null
   
@@ -296,35 +340,6 @@ const isVideoIdInPlaylist = (videoId) => {
     return false
   })
 }
-
-const isItemAlreadyInPlaylist = (item) => {
-  // Extract video ID from the item to be checked
-  const itemVideoId = extractVideoIdFromItem(item)
-  
-  // If we have a video ID, check by video ID first (more reliable)
-  if (itemVideoId && isVideoIdInPlaylist(itemVideoId)) {
-    return true
-  }
-  
-  // Also check by item ID for safety
-  if (item.item_id && isItemInPlaylist(item.item_id)) {
-    return true
-  }
-  
-  return false
-}
-
-watch(() => showAddForm.value, (newVal) => {
-  if (newVal) {
-    fetchAvailableItems()
-  }
-})
-
-onMounted(() => {
-  if (showAddForm.value) {
-    fetchAvailableItems()
-  }
-})
 </script>
 
 <template>
@@ -332,7 +347,9 @@ onMounted(() => {
     <div class="detail-header">
       <div class="playlist-info-section">
         <div class="playlist-info-header">
-          <div class="playlist-icon-large">{{ playlist?.type === 'film' ? '🎬' : '🎥' }}</div>
+          <div class="playlist-icon-large">
+            <Icon :name="playlist?.type === 'film' ? 'film_playlists' : 'video_playlists'" :size="48" />
+          </div>
           <div>
             <h3>{{ playlist?.name || 'Unnamed Playlist' }}</h3>
             <p v-if="playlist?.description" class="playlist-description-text">{{ playlist.description }}</p>
@@ -346,60 +363,60 @@ onMounted(() => {
       </div>
       <div class="header-actions">
         <button @click="handlePlayAll" class="play-all-btn" :disabled="items.length === 0">
-          ▶️ Play All
+          <Icon name="play" :size="16" icon-class="btn-icon" />
+          <span>Play All</span>
         </button>
         <button @click="showAddForm = !showAddForm" class="add-item-btn">
-          {{ showAddForm ? '✖ Cancel' : '➕ Add Items' }}
+          <Icon :name="showAddForm ? 'cancel' : 'add'" :size="16" icon-class="btn-icon" />
+          <span>{{ showAddForm ? 'Cancel' : 'Add Items' }}</span>
         </button>
-        <button @click="handleDeletePlaylist" class="delete-playlist-btn">🗑️ Delete</button>
+        <button @click="handleDeletePlaylist" class="delete-playlist-btn">
+          <Icon name="delete" :size="16" icon-class="btn-icon" />
+          <span>Delete</span>
+        </button>
       </div>
     </div>
 
     <div v-if="showAddForm" class="add-items-section">
-      <div class="search-bar">
-        <input
-          v-model="searchQuery"
-          type="text"
-          placeholder="Search items..."
-          class="search-input"
-        />
-      </div>
-      <div v-if="loading" class="loading">Loading available items...</div>
-      <div v-else-if="filteredAvailableItems.length === 0" class="empty-state">
-        <p>No {{ playlist?.type === 'film' ? 'film' : 'video' }} items available.</p>
-      </div>
-      <div v-else class="available-items">
-        <div
-          v-for="item in filteredAvailableItems"
-          :key="`${item.item_type}-${item.item_id}`"
-          class="available-item-card"
-          :class="{ 'in-playlist': isItemAlreadyInPlaylist(item) }"
-        >
-          <div class="item-thumbnail">
-            <img
-              v-if="item.thumbnail_url || item.film_thumbnail || item.video_thumbnail"
-              :src="item.thumbnail_url || item.film_thumbnail || item.video_thumbnail"
-              :alt="item.title"
-              @error="$event.target.style.display = 'none'"
+      <div class="add-form">
+        <h3>Add New Video</h3>
+
+        <div class="form-group">
+          <label>YouTube URL:</label>
+          <span class="help-text">💡 Double-click to paste from clipboard</span>
+          <input
+            v-model="newVideo.youtube_url"
+            @dblclick="handleDoubleClickPasteUrl"
+            placeholder="https://youtube.com/watch?v=..."
+            title="Double-click to paste from clipboard"
+            class="url-input"
+          />
+        </div>
+
+        <div class="form-group">
+          <label>Title:</label>
+          <div class="title-input-group">
+            <input
+              v-model="newVideo.title"
+              placeholder="Video title (auto-filled)"
+              class="title-input"
             />
-            <div v-else class="placeholder-thumbnail">
-              {{ playlist?.type === 'film' ? '🎬' : '🎥' }}
-            </div>
+            <button @click="fetchVideoDetails" :disabled="loading" class="fetch-btn">
+              {{ loading ? '⏳' : '🔍' }} Fetch
+            </button>
           </div>
-          <div class="item-info">
-            <h4 class="item-title">{{ item.title }}</h4>
-            <p v-if="item.director" class="item-artist">{{ item.director }}</p>
-            <p v-if="item.video_id" class="item-id">Video ID: {{ item.video_id }}</p>
-          </div>
-          <button
-            v-if="!isItemAlreadyInPlaylist(item)"
-            @click="handleAddItem(item)"
-            class="add-item-small-btn"
-            :disabled="loading"
-          >
-            ➕
+        </div>
+
+        <div v-if="newVideo.thumbnail_url" class="form-group">
+          <label>Thumbnail Preview:</label>
+          <img :src="newVideo.thumbnail_url" class="thumbnail-preview" />
+        </div>
+
+        <div class="form-actions">
+          <button @click="handleAddVideo" :disabled="loading" class="save-btn">
+            {{ loading ? 'Adding...' : 'Add Video' }}
           </button>
-          <span v-else class="in-playlist-badge">✓ Added</span>
+          <button @click="handleCancelAdd" class="cancel-btn">Cancel</button>
         </div>
       </div>
     </div>
@@ -425,7 +442,7 @@ onMounted(() => {
               @error="$event.target.style.display = 'none'"
             />
             <div v-else class="placeholder-thumbnail-small">
-              {{ playlist?.type === 'film' ? '🎬' : '🎥' }}
+              <Icon :name="playlist?.type === 'film' ? 'film_playlists' : 'video_playlists'" :size="24" />
             </div>
           </div>
           <div class="item-details">
@@ -437,10 +454,10 @@ onMounted(() => {
           </div>
           <div class="item-actions">
             <button @click="handlePlayItem(item, index)" class="play-item-btn" title="Play this video">
-              ▶️
+              <Icon name="play" :size="16" />
             </button>
             <button @click="handleRemoveItem(item.id)" class="remove-item-btn" title="Remove from playlist">
-              ✖
+              <Icon name="cancel" :size="16" />
             </button>
           </div>
         </div>
@@ -451,10 +468,12 @@ onMounted(() => {
 
 <style scoped>
 .playlist-detail {
-  flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  gap: 20px;
+  height: 100%;
+  overflow-y: auto;
+  padding: 10px;
 }
 
 .detail-header {
@@ -462,11 +481,11 @@ onMounted(() => {
   border: 1px solid rgba(78, 205, 196, 0.3);
   border-radius: 16px;
   padding: 20px 24px;
-  margin-bottom: 20px;
   display: flex;
   flex-direction: column;
   gap: 16px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  flex-shrink: 0;
 }
 
 .playlist-info-section {
@@ -481,9 +500,11 @@ onMounted(() => {
 }
 
 .playlist-icon-large {
-  font-size: 48px;
   flex-shrink: 0;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4ecdc4;
 }
 
 .playlist-info-header > div {
@@ -554,11 +575,17 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 6px;
   position: relative;
   overflow: hidden;
   flex: 1;
   min-width: 0;
+}
+
+.play-all-btn .btn-icon,
+.add-item-btn .btn-icon,
+.delete-playlist-btn .btn-icon {
+  flex-shrink: 0;
 }
 
 .play-all-btn::before,
@@ -720,147 +747,141 @@ onMounted(() => {
   border: 1px solid rgba(78, 205, 196, 0.2);
   border-radius: 12px;
   padding: 20px;
-  margin-bottom: 20px;
-  max-height: 400px;
-  overflow-y: auto;
+  flex-shrink: 0;
 }
 
-.search-bar {
-  margin-bottom: 16px;
-}
-
-.search-input {
-  width: 100%;
-  background: #1a1a1a;
-  border: 1px solid rgba(78, 205, 196, 0.2);
+.add-form {
+  background-color: #3a3a3a;
+  padding: 20px;
   border-radius: 8px;
-  padding: 12px 16px;
+}
+
+.add-form h3 {
+  margin-top: 0;
+  color: #4ecdc4;
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  color: #ccc;
+  font-size: 14px;
+}
+
+.help-text {
+  display: block;
+  margin-bottom: 6px;
+  color: #888;
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.url-input,
+.title-input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #555;
+  border-radius: 4px;
+  background-color: #2a2a2a;
   color: white;
   font-size: 14px;
 }
 
-.search-input:focus {
+.url-input:focus,
+.title-input:focus {
   outline: none;
   border-color: #4ecdc4;
-  box-shadow: 0 0 0 4px rgba(78, 205, 196, 0.1);
 }
 
-.available-items {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
-}
-
-.available-item-card {
-  background: rgba(26, 26, 26, 0.8);
-  border: 1px solid rgba(78, 205, 196, 0.2);
-  border-radius: 8px;
-  padding: 12px;
+.title-input-group {
   display: flex;
-  flex-direction: column;
   gap: 8px;
-  position: relative;
-  transition: all 0.3s ease;
-}
-
-.available-item-card:hover:not(.in-playlist) {
-  border-color: #4ecdc4;
-  transform: translateY(-2px);
-}
-
-.available-item-card.in-playlist {
-  opacity: 0.6;
-  border-color: rgba(78, 205, 196, 0.1);
-}
-
-.item-thumbnail {
-  width: 100%;
-  aspect-ratio: 1;
-  border-radius: 6px;
-  overflow: hidden;
-  background: rgba(78, 205, 196, 0.1);
-  display: flex;
   align-items: center;
-  justify-content: center;
 }
 
-.item-thumbnail img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.placeholder-thumbnail {
-  font-size: 48px;
-}
-
-.item-info {
+.title-input-group input {
   flex: 1;
 }
 
-.item-title {
-  color: #fff;
-  margin: 0 0 4px 0;
-  font-size: 14px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.item-artist,
-.item-id {
-  color: #888;
-  margin: 0;
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.add-item-small-btn {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  background: rgba(78, 205, 196, 0.2);
-  border: 1px solid rgba(78, 205, 196, 0.4);
-  color: #4ecdc4;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-}
-
-.add-item-small-btn:hover:not(:disabled) {
-  background: rgba(78, 205, 196, 0.3);
-  border-color: #4ecdc4;
-  transform: scale(1.1);
-}
-
-.in-playlist-badge {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  background: rgba(78, 205, 196, 0.2);
-  border: 1px solid rgba(78, 205, 196, 0.4);
-  color: #4ecdc4;
-  padding: 4px 8px;
+.fetch-btn {
+  background-color: #4ecdc4;
+  color: white;
+  border: none;
+  padding: 8px 12px;
   border-radius: 4px;
-  font-size: 11px;
-  font-weight: 500;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+  transition: background-color 0.3s;
+}
+
+.fetch-btn:hover:not(:disabled) {
+  background-color: #45b7aa;
+}
+
+.fetch-btn:disabled {
+  background-color: #666;
+  cursor: not-allowed;
+}
+
+.thumbnail-preview {
+  width: 100%;
+  max-width: 200px;
+  height: auto;
+  border-radius: 8px;
+  border: 2px solid #4ecdc4;
+  margin-top: 8px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.save-btn,
+.cancel-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.3s;
+}
+
+.save-btn {
+  background-color: #4ecdc4;
+  color: white;
+}
+
+.save-btn:hover:not(:disabled) {
+  background-color: #45b7aa;
+}
+
+.save-btn:disabled {
+  background-color: #666;
+  cursor: not-allowed;
+}
+
+.cancel-btn {
+  background-color: #666;
+  color: white;
+}
+
+.cancel-btn:hover {
+  background-color: #777;
 }
 
 .playlist-items-section {
-  flex: 1;
-  overflow-y: auto;
   padding: 20px;
   background: rgba(42, 42, 42, 0.4);
   border-radius: 12px;
+  flex-shrink: 0;
 }
 
 .section-title {
@@ -918,7 +939,10 @@ onMounted(() => {
 }
 
 .placeholder-thumbnail-small {
-  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
 }
 
 .item-details {

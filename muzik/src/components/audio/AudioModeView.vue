@@ -59,6 +59,40 @@ const formattedDuration = computed(() => {
   return formatTime(props.duration || 0)
 })
 
+// Format duration from video object (can be string like "3:45" or seconds number)
+const formatVideoDuration = (video) => {
+  if (!video) return '--:--'
+  
+  // If duration is already a formatted string (e.g., "3:45")
+  if (typeof video.duration === 'string' && video.duration.includes(':')) {
+    return video.duration
+  }
+  
+  // If duration is a number (seconds)
+  if (typeof video.duration === 'number' && video.duration > 0) {
+    return formatTime(video.duration)
+  }
+  
+  // If duration is a string that can be parsed as number
+  const durationNum = parseFloat(video.duration)
+  if (!isNaN(durationNum) && durationNum > 0) {
+    return formatTime(durationNum)
+  }
+  
+  return '--:--'
+}
+
+// Get formatted duration for each video in playlist
+const getVideoDuration = (video, index) => {
+  // If this is the currently playing video and we have duration from player, use that
+  if (index === props.currentVideoIndex && props.duration > 0) {
+    return formatTime(props.duration)
+  }
+  
+  // Otherwise use duration from video object
+  return formatVideoDuration(video)
+}
+
 const handleSeek = (event) => {
   if (!props.duration || props.duration === 0) return
   const sliderValue = Number(event.target.value)
@@ -156,7 +190,7 @@ const handleToggleVolumeSlider = () => {
             </div>
             
             <div class="item-duration">
-              {{ video.duration || '--:--' }}
+              {{ getVideoDuration(video, index) }}
             </div>
           </div>
         </div>
@@ -206,6 +240,7 @@ const handleToggleVolumeSlider = () => {
           <div class="progress-container">
             <span class="time-display">{{ formattedCurrentTime }}</span>
             <div class="progress-bar-wrapper">
+              <div class="progress-filled" :style="{ width: `${progress}%` }"></div>
               <input
                 type="range"
                 min="0"
@@ -267,8 +302,30 @@ const handleToggleVolumeSlider = () => {
   grid-template-columns: 1fr 1fr;
   gap: 40px;
   padding: 40px;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   min-height: 0;
+  max-height: 100%;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+  -webkit-overflow-scrolling: touch;
+}
+
+.audio-main::-webkit-scrollbar {
+  width: 8px;
+}
+
+.audio-main::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.audio-main::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+}
+
+.audio-main::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
 }
 
 /* Album Section */
@@ -276,9 +333,11 @@ const handleToggleVolumeSlider = () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 30px;
   padding: 20px;
+  min-height: 0;
+  overflow: visible;
 }
 
 .album-art-wrapper {
@@ -350,6 +409,8 @@ const handleToggleVolumeSlider = () => {
   background: rgba(0, 0, 0, 0.2);
   border-radius: 16px;
   padding: 20px;
+  min-height: 0;
+  max-height: 100%;
 }
 
 .playlist-header {
@@ -585,21 +646,45 @@ const handleToggleVolumeSlider = () => {
 .progress-bar-wrapper {
   flex: 1;
   position: relative;
-}
-
-.progress-slider {
-  width: 100%;
   height: 4px;
   border-radius: 2px;
   background: rgba(255, 255, 255, 0.2);
+}
+
+.progress-filled {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #4ecdc4 0%, #45b7aa 100%);
+  border-radius: 2px;
+  transition: width 0.1s linear;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.progress-slider {
+
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: transparent;
   outline: none;
   -webkit-appearance: none;
   appearance: none;
   cursor: pointer;
-  transition: height 0.2s ease;
+  transition: height 2s ease;
+  position: relative;
+  z-index: 2;
+  margin: 0;
+  padding-bottom: 15px;
 }
 
 .progress-slider:hover {
+  height: 6px;
+}
+
+.progress-bar-wrapper:hover .progress-filled {
   height: 6px;
 }
 
@@ -608,44 +693,67 @@ const handleToggleVolumeSlider = () => {
   cursor: not-allowed;
 }
 
+/* Webkit - Chrome, Safari, Edge */
+.progress-slider::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+}
+
 .progress-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: white;
+  background: #4ecdc4;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 6px rgba(78, 205, 196, 0.4);
+  margin-top: -4px;
+  position: relative;
+  z-index: 3;
+  border: none;
 }
 
 .progress-slider:hover::-webkit-slider-thumb {
-  transform: scale(1.2);
-  background: #4ecdc4;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  background: #45b7aa;
+  box-shadow: 0 3px 8px rgba(78, 205, 196, 0.6);
+}
+
+/* Firefox */
+.progress-slider::-moz-range-track {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: transparent;
+  border: none;
 }
 
 .progress-slider::-moz-range-thumb {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: white;
+  background: #4ecdc4;
   cursor: pointer;
   border: none;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 6px rgba(78, 205, 196, 0.4);
+  margin: 0;
+  padding: 0;
 }
 
 .progress-slider:hover::-moz-range-thumb {
-  transform: scale(1.2);
-  background: #4ecdc4;
+  transform: scale(1.3);
+  background: #45b7aa;
+  box-shadow: 0 3px 8px rgba(78, 205, 196, 0.6);
 }
 
-.progress-slider::-moz-range-track {
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.2);
-}
 
 .control-btn {
   background: rgba(255, 255, 255, 0.1);
@@ -773,28 +881,42 @@ const handleToggleVolumeSlider = () => {
 @media screen and (min-width: 768px) and (max-width: 1023px) {
   .audio-main {
     grid-template-columns: 1fr;
-    gap: 30px;
-    padding: 30px;
+    gap: 20px;
+    padding: 20px;
+    overflow-y: auto;
   }
 
   .album-section {
-    gap: 20px;
+    gap: 15px;
+    padding: 15px;
+    justify-content: flex-start;
   }
 
   .album-art-wrapper {
-    max-width: 300px;
+    max-width: 280px;
   }
 
   .track-title {
-    font-size: 24px;
+    font-size: 22px;
   }
 
   .track-artist {
-    font-size: 16px;
+    font-size: 15px;
+  }
+
+  .playlist-section {
+    padding: 15px;
+    max-height: 60vh;
+    min-height: 300px;
+  }
+
+  .playlist-items {
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 
   .player-controls-bar {
-    padding: 15px 30px;
+    padding: 15px 20px;
   }
 
   .controls-wrapper {
@@ -823,65 +945,98 @@ const handleToggleVolumeSlider = () => {
 @media screen and (max-width: 767px) {
   .audio-main {
     grid-template-columns: 1fr;
-    gap: 20px;
-    padding: 20px;
+    gap: 15px;
+    padding: 15px;
+    overflow-y: auto;
   }
 
   .album-section {
-    gap: 15px;
+    gap: 12px;
     padding: 10px;
+    justify-content: flex-start;
   }
 
   .album-art-wrapper {
-    max-width: 250px;
+    max-width: 200px;
   }
 
   .music-icon {
-    font-size: 80px;
+    font-size: 60px;
   }
 
   .track-title {
-    font-size: 20px;
+    font-size: 18px;
+    -webkit-line-clamp: 2;
   }
 
   .track-artist {
-    font-size: 14px;
-  }
-
-  .playlist-section {
-    padding: 15px;
-  }
-
-  .playlist-header h2 {
-    font-size: 20px;
-  }
-
-  .playlist-item {
-    grid-template-columns: 30px 60px 1fr 50px;
-    gap: 10px;
-    padding: 10px;
-  }
-
-  .item-thumbnail {
-    width: 60px;
-    height: 34px;
-  }
-
-  .item-title {
     font-size: 13px;
   }
 
+  .playlist-section {
+    padding: 12px;
+    max-height: 50vh;
+    min-height: 250px;
+  }
+
+  .playlist-header {
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+  }
+
+  .playlist-header h2 {
+    font-size: 18px;
+  }
+
+  .track-count {
+    font-size: 12px;
+  }
+
+  .playlist-items {
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .playlist-item {
+    grid-template-columns: 30px 50px 1fr 45px;
+    gap: 8px;
+    padding: 8px;
+    margin-bottom: 4px;
+  }
+
+  .item-number {
+    font-size: 12px;
+  }
+
+  .playing-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  .item-thumbnail {
+    width: 50px;
+    height: 28px;
+  }
+
+  .item-title {
+    font-size: 12px;
+  }
+
   .item-artist {
+    font-size: 10px;
+  }
+
+  .item-duration {
     font-size: 11px;
   }
 
   .player-controls-bar {
-    padding: 12px 20px;
+    padding: 10px 15px;
   }
 
   .controls-wrapper {
     grid-template-columns: 1fr;
-    gap: 12px;
+    gap: 10px;
   }
 
   .center-controls {
@@ -890,6 +1045,12 @@ const handleToggleVolumeSlider = () => {
 
   .progress-container {
     max-width: 100%;
+    gap: 8px;
+  }
+
+  .time-display {
+    font-size: 11px;
+    min-width: 35px;
   }
 
   .mini-track-info {
@@ -897,38 +1058,60 @@ const handleToggleVolumeSlider = () => {
   }
 
   .mini-thumbnail {
-    width: 48px;
-    height: 48px;
+    width: 40px;
+    height: 40px;
   }
 
   .mini-title {
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .mini-artist {
-    font-size: 11px;
+    font-size: 10px;
   }
 
   .playback-controls {
-    gap: 12px;
+    gap: 10px;
+    margin-bottom: 8px;
   }
 
   .control-btn {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
+  }
+
+  .control-btn svg {
+    width: 16px;
+    height: 16px;
   }
 
   .play-btn {
-    width: 44px;
-    height: 44px;
+    width: 40px;
+    height: 40px;
+  }
+
+  .play-btn svg {
+    width: 20px;
+    height: 20px;
   }
 
   .volume-controls {
     justify-content: center;
+    gap: 8px;
+  }
+
+  .volume-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .volume-btn svg {
+    width: 18px;
+    height: 18px;
   }
 
   .volume-slider-container {
-    width: 80px;
+    width: 70px;
   }
 }
 </style>

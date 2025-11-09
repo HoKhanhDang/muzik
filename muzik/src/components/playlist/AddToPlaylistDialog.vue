@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
 import { playlistService } from '../../services/index.js'
+import Icon from '../common/Icon.vue'
 
 const props = defineProps({
   video: Object,
@@ -175,7 +176,10 @@ onMounted(() => {
 
         <div v-else class="playlists-list">
           <div v-if="videoPlaylists.length > 0" class="playlist-group">
-            <h4 class="group-title">🎬 Video Playlists (Can add videos)</h4>
+            <h4 class="group-title">
+              <Icon name="video_playlists" :size="18" icon-class="group-icon" />
+              Video Playlists (Can add videos)
+            </h4>
             <div class="playlist-options">
               <label
                 v-for="playlist in videoPlaylists"
@@ -195,13 +199,19 @@ onMounted(() => {
                 />
                 <span class="playlist-name">{{ playlist.name }}</span>
                 <span v-if="playlist.description" class="playlist-description">{{ playlist.description }}</span>
-                <span v-if="isVideoInPlaylist(playlist.id)" class="already-added-badge" title="Video already in this playlist">✓ Already Added</span>
+                <span v-if="isVideoInPlaylist(playlist.id)" class="already-added-badge" title="Video already in this playlist">
+                  <Icon name="check" :size="14" icon-class="check-icon" />
+                  Already Added
+                </span>
               </label>
             </div>
           </div>
 
           <div v-if="filmPlaylists.length > 0" class="playlist-group">
-            <h4 class="group-title">🎬 Film Playlists (Cannot add videos)</h4>
+            <h4 class="group-title">
+              <Icon name="film_playlists" :size="18" icon-class="group-icon" />
+              Film Playlists (Cannot add videos)
+            </h4>
             <div class="playlist-options">
               <label
                 v-for="playlist in filmPlaylists"
@@ -404,6 +414,13 @@ onMounted(() => {
   color: #4ecdc4;
   font-size: 16px;
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.group-icon {
+  flex-shrink: 0;
 }
 
 .playlist-options {
@@ -494,6 +511,13 @@ onMounted(() => {
   background: rgba(78, 205, 196, 0.2);
   border-radius: 6px;
   border: 1px solid rgba(78, 205, 196, 0.4);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.already-added-badge .check-icon {
+  flex-shrink: 0;
 }
 
 .empty-video-playlists {
