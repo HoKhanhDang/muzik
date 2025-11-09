@@ -80,7 +80,7 @@ onUnmounted(() => {
         <svg v-else class="audio-icon" viewBox="0 0 24 24" fill="currentColor">
           <path d="M4 6.47L5.76 10H20v8H5.76L4 21.53V6.47M2 4v18l3-6h15c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2H5l-3-6z"/>
         </svg>
-        <span class="audio-label">Audio Mode</span>
+        <span class="audio-label">{{ audioOnlyMode ? 'Video Mode' : 'Audio Mode' }}</span>
       </button>
 
       <div class="profile-menu-container">

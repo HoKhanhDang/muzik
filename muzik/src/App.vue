@@ -34,6 +34,9 @@ const currentUser = ref(null)
 const showProfileModal = ref(false)
 const audioOnlyMode = ref(false) // Audio-only mode toggle
 const isPlaying = ref(false) // Track player state
+const currentTime = ref(0) // Current playback time in seconds
+const duration = ref(0) // Total video duration in seconds
+const timeUpdateInterval = ref(null) // Interval for updating current time
 
 // Form data for adding new videos
 const newVideo = ref({
@@ -319,10 +322,22 @@ const initializePlayer = () => {
           if (audioOnlyMode.value) {
             event.target.setPlaybackQuality('small')
           }
+          
+          // Get initial duration
+          try {
+            const dur = event.target.getDuration()
+            if (dur !== undefined && !isNaN(dur) && dur > 0) {
+              duration.value = dur
+            }
+          } catch (error) {
+            console.warn('Error getting duration:', error)
+          }
+          
           // Try to play - will fail gracefully if autoplay blocked
           try {
             event.target.playVideo()
             isPlaying.value = true
+            startTimeTracking()
           } catch (error) {
             console.log('Autoplay blocked, user needs to click play:', error)
           }
@@ -347,6 +362,11 @@ const playNextVideo = () => {
   if (videoIds.value.length === 0) return
   currentVideoIndex.value = (currentVideoIndex.value + 1) % videoIds.value.length
   
+  // Reset time tracking
+  stopTimeTracking()
+  currentTime.value = 0
+  duration.value = 0
+  
   if (player.value && isPlayerReady.value && typeof player.value.loadVideoById === 'function') {
     try {
       player.value.loadVideoById(videoIds.value[currentVideoIndex.value])
@@ -366,6 +386,11 @@ const playPreviousVideo = () => {
   currentVideoIndex.value =
     currentVideoIndex.value === 0 ? videoIds.value.length - 1 : currentVideoIndex.value - 1
   
+  // Reset time tracking
+  stopTimeTracking()
+  currentTime.value = 0
+  duration.value = 0
+  
   if (player.value && isPlayerReady.value && typeof player.value.loadVideoById === 'function') {
     try {
       player.value.loadVideoById(videoIds.value[currentVideoIndex.value])
@@ -383,6 +408,11 @@ const playPreviousVideo = () => {
 const playVideoAtIndex = (index) => {
   if (videoIds.value.length === 0) return
   currentVideoIndex.value = index
+  
+  // Reset time tracking
+  stopTimeTracking()
+  currentTime.value = 0
+  duration.value = 0
   
   // Validate player exists and has the method
   if (player.value && isPlayerReady.value && typeof player.value.loadVideoById === 'function') {
@@ -450,12 +480,55 @@ const togglePlay = () => {
     if (playerState === window.YT.PlayerState.PLAYING) {
       player.value.pauseVideo()
       isPlaying.value = false
+      stopTimeTracking()
     } else {
       player.value.playVideo()
       isPlaying.value = true
+      startTimeTracking()
     }
   } catch (error) {
     console.error('Error toggling play/pause:', error)
+  }
+}
+
+const startTimeTracking = () => {
+  if (timeUpdateInterval.value) {
+    clearInterval(timeUpdateInterval.value)
+  }
+  
+  timeUpdateInterval.value = setInterval(() => {
+    if (player.value && isPlayerReady.value) {
+      try {
+        const time = player.value.getCurrentTime()
+        const dur = player.value.getDuration()
+        if (time !== undefined && !isNaN(time)) {
+          currentTime.value = time
+        }
+        if (dur !== undefined && !isNaN(dur) && dur > 0) {
+          duration.value = dur
+        }
+      } catch (error) {
+        console.warn('Error getting player time:', error)
+      }
+    }
+  }, 100) // Update every 100ms for smooth progress
+}
+
+const stopTimeTracking = () => {
+  if (timeUpdateInterval.value) {
+    clearInterval(timeUpdateInterval.value)
+    timeUpdateInterval.value = null
+  }
+}
+
+const handleSeek = (time) => {
+  if (player.value && isPlayerReady.value) {
+    try {
+      player.value.seekTo(time, true)
+      currentTime.value = time
+    } catch (error) {
+      console.error('Error seeking:', error)
+    }
   }
 }
 
@@ -463,10 +536,13 @@ const togglePlay = () => {
 const handlePlayerStateChange = (event) => {
   if (event.data === window.YT.PlayerState.PLAYING) {
     isPlaying.value = true
+    startTimeTracking()
   } else if (event.data === window.YT.PlayerState.PAUSED) {
     isPlaying.value = false
+    stopTimeTracking()
   } else if (event.data === window.YT.PlayerState.ENDED) {
     isPlaying.value = false
+    stopTimeTracking()
     playNextVideo()
   }
 }
@@ -622,6 +698,11 @@ const instantPlay = async () => {
       }
     }
 
+    // Reset time tracking
+    stopTimeTracking()
+    currentTime.value = 0
+    duration.value = 0
+    
     // Play instantly without adding to playlist
     if (player.value && isPlayerReady.value) {
       player.value.loadVideoById(videoId)
@@ -648,20 +729,22 @@ const instantPlay = async () => {
               if (audioOnlyMode.value) {
                 event.target.setPlaybackQuality('small')
               }
+              
+              // Get initial duration
+              try {
+                const dur = event.target.getDuration()
+                if (dur !== undefined && !isNaN(dur) && dur > 0) {
+                  duration.value = dur
+                }
+              } catch (error) {
+                console.warn('Error getting duration:', error)
+              }
+              
               event.target.playVideo()
               isPlaying.value = true
+              startTimeTracking()
             },
-            onStateChange: (event) => {
-              // Update playing state
-              if (event.data === window.YT.PlayerState.PLAYING) {
-                isPlaying.value = true
-              } else if (event.data === window.YT.PlayerState.PAUSED) {
-                isPlaying.value = false
-              } else if (event.data === window.YT.PlayerState.ENDED) {
-                isPlaying.value = false
-                // Don't auto-next for instant play
-              }
-            },
+            onStateChange: handlePlayerStateChange,
           },
         })
       }
@@ -675,6 +758,11 @@ const instantPlay = async () => {
 }
 
 const playFromHistory = (videoId) => {
+  // Reset time tracking
+  stopTimeTracking()
+  currentTime.value = 0
+  duration.value = 0
+  
   if (player.value && isPlayerReady.value) {
     player.value.loadVideoById(videoId)
   }
@@ -708,6 +796,11 @@ const playPlaylistItem = (data) => {
       activeTab.value = ROUTES.PLAYLIST
     }
     
+    // Reset time tracking
+    stopTimeTracking()
+    currentTime.value = 0
+    duration.value = 0
+    
     // Play the video
     const playVideo = () => {
       if (player.value && isPlayerReady.value) {
@@ -738,6 +831,11 @@ const playPlaylistItem = (data) => {
     }
     initPlayer()
   } else {
+    // Reset time tracking
+    stopTimeTracking()
+    currentTime.value = 0
+    duration.value = 0
+    
     // Just play single video without playlist
     if (player.value && isPlayerReady.value) {
       player.value.loadVideoById(videoId)
@@ -764,23 +862,25 @@ const playPlaylistItem = (data) => {
               if (audioOnlyMode.value) {
                 event.target.setPlaybackQuality('small')
               }
+              
+              // Get initial duration
+              try {
+                const dur = event.target.getDuration()
+                if (dur !== undefined && !isNaN(dur) && dur > 0) {
+                  duration.value = dur
+                }
+              } catch (error) {
+                console.warn('Error getting duration:', error)
+              }
+              
               event.target.playVideo().then(() => {
                 isPlaying.value = true
+                startTimeTracking()
               }).catch(() => {
                 console.log('Autoplay blocked, user needs to click play')
               })
             },
-            onStateChange: (event) => {
-              // Update playing state
-              if (event.data === window.YT.PlayerState.PLAYING) {
-                isPlaying.value = true
-              } else if (event.data === window.YT.PlayerState.PAUSED) {
-                isPlaying.value = false
-              } else if (event.data === window.YT.PlayerState.ENDED) {
-                isPlaying.value = false
-                // Don't auto-next for single video
-              }
-            },
+            onStateChange: handlePlayerStateChange,
           },
         })
       }
@@ -824,8 +924,20 @@ const initPlaylistPlayer = (videoId) => {
           if (audioOnlyMode.value) {
             event.target.setPlaybackQuality('small')
           }
+          
+          // Get initial duration
+          try {
+            const dur = event.target.getDuration()
+            if (dur !== undefined && !isNaN(dur) && dur > 0) {
+              duration.value = dur
+            }
+          } catch (error) {
+            console.warn('Error getting duration:', error)
+          }
+          
           event.target.playVideo().then(() => {
             isPlaying.value = true
+            startTimeTracking()
           }).catch(() => {
             console.log('Autoplay blocked, user needs to click play')
           })
@@ -984,8 +1096,11 @@ const toggleAudioOnlyMode = () => {
   audioOnlyMode.value = !audioOnlyMode.value
   
   // When entering audio mode, hide sidebar
+  // When exiting audio mode (back to video mode), show sidebar
   if (audioOnlyMode.value) {
     showSidebar.value = false
+  } else {
+    showSidebar.value = true
   }
   
   // Reinitialize player with new settings
@@ -1215,6 +1330,8 @@ onMounted(async () => {
 onUnmounted(() => {
   // Clean up event listener
   eventBus.off('auth-error', handleAuthError)
+  // Clean up time tracking interval
+  stopTimeTracking()
 })
 </script>
 
@@ -1245,12 +1362,15 @@ onUnmounted(() => {
       :volume="volume"
       :is-muted="isMuted"
       :is-playing="isPlaying"
+      :current-time="currentTime"
+      :duration="duration"
       @play-video="playVideoAtIndex"
       @play-next="playNextVideo"
       @play-previous="playPreviousVideo"
       @toggle-mute="toggleMute"
       @set-volume="setVolume"
       @toggle-play="togglePlay"
+      @seek="handleSeek"
     />
 
     <div v-show="showSidebar" id="list-container">

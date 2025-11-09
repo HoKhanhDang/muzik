@@ -13,6 +13,8 @@ defineProps({
   volume: Number,
   isMuted: Boolean,
   isPlaying: Boolean,
+  currentTime: Number,
+  duration: Number,
 })
 
 defineEmits([
@@ -22,6 +24,7 @@ defineEmits([
   'toggle-mute',
   'set-volume',
   'toggle-play',
+  'seek',
 ])
 </script>
 
@@ -57,12 +60,15 @@ defineEmits([
       :is-muted="isMuted"
       :is-player-ready="isPlayerReady"
       :is-playing="isPlaying"
+      :current-time="currentTime"
+      :duration="duration"
       @play-video="$emit('play-video', $event)"
       @play-next="$emit('play-next')"
       @play-previous="$emit('play-previous')"
       @toggle-mute="$emit('toggle-mute')"
       @set-volume="$emit('set-volume', $event)"
       @toggle-play="$emit('toggle-play')"
+      @seek="$emit('seek', $event)"
     />
   </div>
 </template>

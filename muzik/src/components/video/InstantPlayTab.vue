@@ -1,4 +1,6 @@
 <script setup>
+import HistorySection from '../history/HistorySection.vue'
+
 defineProps({
   instantPlayUrl: String,
   videoIds: Array,
@@ -8,7 +10,7 @@ defineProps({
   isInPlaylist: Function,
 })
 
-defineEmits([
+const emit = defineEmits([
   'update:instantPlayUrl',
   'instant-play',
   'play-previous',
@@ -18,6 +20,39 @@ defineEmits([
   'clear-history',
   'add-from-history',
 ])
+
+const handleDoubleClickPaste = async (event) => {
+  // Focus the input first
+  event.target.focus()
+  
+  try {
+    // Use Clipboard API to read clipboard content
+    // Note: This requires HTTPS or localhost, and user may need to grant permission
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      const text = await navigator.clipboard.readText()
+      if (text && text.trim()) {
+        emit('update:instantPlayUrl', text.trim())
+        // Select all text after pasting for easy editing
+        setTimeout(() => {
+          event.target.select()
+        }, 10)
+      }
+    } else {
+      console.warn('Clipboard API not available')
+      // Fallback: Focus input and show message
+      event.target.select()
+      alert('Clipboard access not available. Please use Ctrl+V (Cmd+V on Mac) to paste.')
+    }
+  } catch (error) {
+    console.warn('Failed to read clipboard:', error)
+    // If permission denied or other error, focus input for manual paste
+    event.target.select()
+    // Optionally show a user-friendly message
+    if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+      alert('Clipboard access denied. Please allow clipboard access or use Ctrl+V (Cmd+V on Mac) to paste.')
+    }
+  }
+}
 </script>
 
 <template>
@@ -28,12 +63,15 @@ defineEmits([
     <div class="instant-play-form">
       <div class="form-group">
         <label>YouTube URL or Video ID:</label>
+        <span class="help-text">💡 Double-click to paste from clipboard</span>
         <div class="instant-input-group">
           <input
             :value="instantPlayUrl"
             @input="$emit('update:instantPlayUrl', $event.target.value)"
             @keyup.enter="$emit('instant-play')"
+            @dblclick="handleDoubleClickPaste"
             placeholder="https://youtube.com/watch?v=... or Video ID"
+            title="Double-click to paste from clipboard"
           />
           <button @click="$emit('instant-play')" :disabled="!instantPlayUrl" class="play-btn">
             ▶️ Play Now
@@ -72,16 +110,6 @@ defineEmits([
     />
   </div>
 </template>
-
-<script>
-import HistorySection from '../history/HistorySection.vue'
-
-export default {
-  components: {
-    HistorySection,
-  },
-}
-</script>
 
 <style scoped>
 .tab-content {
@@ -150,9 +178,18 @@ export default {
 
 .form-group label {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   color: #ccc;
   font-size: 14px;
+}
+
+.help-text {
+  display: block;
+  margin-bottom: 8px;
+  color: #888;
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.4;
 }
 
 .instant-input-group {
@@ -298,6 +335,11 @@ export default {
 
   .form-group label {
     font-size: 12px;
+    margin-bottom: 6px;
+  }
+
+  .help-text {
+    font-size: 11px;
     margin-bottom: 6px;
   }
 

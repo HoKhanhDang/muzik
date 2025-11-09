@@ -9,6 +9,8 @@ const props = defineProps({
   isMuted: Boolean,
   isPlayerReady: Boolean,
   isPlaying: Boolean,
+  currentTime: Number,
+  duration: Number,
 })
 
 const emit = defineEmits([
@@ -18,6 +20,7 @@ const emit = defineEmits([
   'toggle-mute',
   'set-volume',
   'toggle-play',
+  'seek',
 ])
 
 const showVolumeSlider = ref(false)
@@ -41,6 +44,26 @@ const formatTime = (seconds) => {
   const mins = Math.floor(seconds / 60)
   const secs = Math.floor(seconds % 60)
   return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
+const progress = computed(() => {
+  if (!props.duration || props.duration === 0) return 0
+  return (props.currentTime / props.duration) * 100
+})
+
+const formattedCurrentTime = computed(() => {
+  return formatTime(props.currentTime || 0)
+})
+
+const formattedDuration = computed(() => {
+  return formatTime(props.duration || 0)
+})
+
+const handleSeek = (event) => {
+  if (!props.duration || props.duration === 0) return
+  const sliderValue = Number(event.target.value)
+  const seekTime = (sliderValue / 100) * props.duration
+  emit('seek', seekTime)
 }
 
 const handlePlayVideo = (index) => {
@@ -154,28 +177,47 @@ const handleToggleVolumeSlider = () => {
           </div>
         </div>
 
-        <!-- Center: Playback controls -->
-        <div class="playback-controls">
-          <button @click="handlePrevious" class="control-btn" :disabled="videos.length <= 1">
-            <svg viewBox="0 0 24 24" fill="currentColor">
-              <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
-            </svg>
-          </button>
+        <!-- Center: Playback controls and progress -->
+        <div class="center-controls">
+          <div class="playback-controls">
+            <button @click="handlePrevious" class="control-btn" :disabled="videos.length <= 1">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+              </svg>
+            </button>
 
-          <button @click="handleTogglePlay" class="control-btn play-btn">
-            <svg v-if="!isPlaying" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M8 5v14l11-7z"/>
-            </svg>
-            <svg v-else viewBox="0 0 24 24" fill="currentColor">
-              <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
-            </svg>
-          </button>
+            <button @click="handleTogglePlay" class="control-btn play-btn">
+              <svg v-if="!isPlaying" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+              <svg v-else viewBox="0 0 24 24" fill="currentColor">
+                <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+              </svg>
+            </button>
 
-          <button @click="handleNext" class="control-btn" :disabled="videos.length <= 1">
-            <svg viewBox="0 0 24 24" fill="currentColor">
-              <path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z"/>
-            </svg>
-          </button>
+            <button @click="handleNext" class="control-btn" :disabled="videos.length <= 1">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Progress bar -->
+          <div class="progress-container">
+            <span class="time-display">{{ formattedCurrentTime }}</span>
+            <div class="progress-bar-wrapper">
+              <input
+                type="range"
+                min="0"
+                max="100"
+                :value="progress"
+                @input="handleSeek"
+                class="progress-slider"
+                :disabled="!duration || duration === 0"
+              />
+            </div>
+            <span class="time-display">{{ formattedDuration }}</span>
+          </div>
         </div>
 
         <!-- Right: Volume controls -->
@@ -453,7 +495,7 @@ const handleToggleVolumeSlider = () => {
 
 .controls-wrapper {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 1fr 2fr 1fr;
   align-items: center;
   gap: 20px;
   max-width: 1600px;
@@ -507,11 +549,102 @@ const handleToggleVolumeSlider = () => {
 }
 
 /* Playback Controls */
+.center-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
 .playback-controls {
   display: flex;
   align-items: center;
   gap: 15px;
   justify-content: center;
+  margin-bottom: 12px;
+}
+
+/* Progress Bar */
+.progress-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 600px;
+}
+
+.time-display {
+  color: #aaa;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  min-width: 40px;
+  text-align: center;
+}
+
+.progress-bar-wrapper {
+  flex: 1;
+  position: relative;
+}
+
+.progress-slider {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.2);
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  transition: height 0.2s ease;
+}
+
+.progress-slider:hover {
+  height: 6px;
+}
+
+.progress-slider:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.progress-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.progress-slider:hover::-webkit-slider-thumb {
+  transform: scale(1.2);
+  background: #4ecdc4;
+}
+
+.progress-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: white;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.progress-slider:hover::-moz-range-thumb {
+  transform: scale(1.2);
+  background: #4ecdc4;
+}
+
+.progress-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .control-btn {
@@ -669,6 +802,14 @@ const handleToggleVolumeSlider = () => {
     gap: 15px;
   }
 
+  .center-controls {
+    width: 100%;
+  }
+
+  .progress-container {
+    max-width: 100%;
+  }
+
   .mini-track-info {
     justify-content: center;
   }
@@ -741,6 +882,14 @@ const handleToggleVolumeSlider = () => {
   .controls-wrapper {
     grid-template-columns: 1fr;
     gap: 12px;
+  }
+
+  .center-controls {
+    width: 100%;
+  }
+
+  .progress-container {
+    max-width: 100%;
   }
 
   .mini-track-info {
