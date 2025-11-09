@@ -5,9 +5,10 @@ import { NAVIGATION_ITEMS } from '../../constants/routes.js'
 defineProps({
   showSidebar: Boolean,
   activeTab: String,
+  audioOnlyMode: Boolean,
 })
 
-const emit = defineEmits(['toggle-sidebar', 'change-tab', 'profile', 'signout'])
+const emit = defineEmits(['toggle-sidebar', 'change-tab', 'profile', 'signout', 'toggle-audio-mode'])
 
 const showProfileMenu = ref(false)
 
@@ -63,33 +64,50 @@ onUnmounted(() => {
       </button>
     </div>
 
-    <div class="profile-menu-container">
-      <button @click.stop="handleToggleProfileMenu" class="profile-toggle-btn">
-        <svg class="profile-icon" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+    <div class="header-actions">
+      <button
+        @click="$emit('toggle-audio-mode')"
+        class="audio-mode-btn"
+        :class="{ active: audioOnlyMode }"
+        :title="audioOnlyMode ? 'Switch to Video Mode' : 'Switch to Audio Only Mode'"
+      >
+        <svg v-if="!audioOnlyMode" class="audio-icon" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 3v9.28c-.47-.17-.97-.28-1.5-.28C8.01 12 6 14.01 6 16.5S8.01 21 10.5 21c2.31 0 4.2-1.75 4.45-4H15V6h4V3h-7z" />
         </svg>
-        <svg v-if="showProfileMenu" class="chevron-icon" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/>
+        <svg v-else class="audio-icon" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M4 6.47L5.76 10H20v8H5.76L4 21.53V6.47M2 4v18l3-6h15c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2H5l-3-6z"/>
         </svg>
-        <svg v-else class="chevron-icon" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/>
-        </svg>
+        <span class="audio-label">Audio Mode</span>
       </button>
 
-      <div v-show="showProfileMenu" class="profile-dropdown">
-        <button @click="handleProfile" class="profile-menu-item">
-          <svg class="menu-icon" viewBox="0 0 24 24" fill="currentColor">
+      <div class="profile-menu-container">
+        <button @click.stop="handleToggleProfileMenu" class="profile-toggle-btn">
+          <svg class="profile-icon" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
           </svg>
-          <span>Profile</span>
-        </button>
-        <div class="profile-menu-divider"></div>
-        <button @click="handleSignOut" class="profile-menu-item signout">
-          <svg class="menu-icon" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.59L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+          <svg v-if="showProfileMenu" class="chevron-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/>
           </svg>
-          <span>Sign Out</span>
+          <svg v-else class="chevron-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/>
+          </svg>
         </button>
+
+        <div v-show="showProfileMenu" class="profile-dropdown">
+          <button @click="handleProfile" class="profile-menu-item">
+            <svg class="menu-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+            </svg>
+            <span>Profile</span>
+          </button>
+          <div class="profile-menu-divider"></div>
+          <button @click="handleSignOut" class="profile-menu-item signout">
+            <svg class="menu-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.59L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+            </svg>
+            <span>Sign Out</span>
+          </button>
+        </div>
       </div>
     </div>
   </header>
@@ -103,29 +121,29 @@ onUnmounted(() => {
   right: 0;
   z-index: 1000;
   background: linear-gradient(135deg, #1a1a1a, #2a2a2a);
-  padding: 15px 20px;
+  padding: 8px 16px;
   border-bottom: 2px solid #4ecdc4;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(10px);
-  height: 100px;
+  height: 60px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: 12px;
   min-width: 0;
 }
 
 .app-header-logo {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 10px;
   flex-shrink: 0;
   min-width: 0;
 }
 
 .app-header-title {
   color: #4ecdc4;
-  font-size: 35px;
+  font-size: 22px;
   font-weight: bold;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
   white-space: nowrap;
@@ -137,11 +155,11 @@ onUnmounted(() => {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border: none;
   color: white;
-  width: 50px;
-  height: 50px;
-  border-radius: 10px;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
   cursor: pointer;
-  font-size: 24px;
+  font-size: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -153,19 +171,19 @@ onUnmounted(() => {
 /* Large Desktop (>= 1440px) */
 @media screen and (min-width: 1440px) {
   .app-header {
-    padding: 18px 24px;
-    gap: 24px;
-    height: 110px;
+    padding: 10px 20px;
+    gap: 16px;
+    height: 70px;
   }
 
   .app-header-title {
-    font-size: 40px;
+    font-size: 26px;
   }
 
   .sidebar-toggle-btn {
-    width: 55px;
-    height: 55px;
-    font-size: 26px;
+    width: 44px;
+    height: 44px;
+    font-size: 22px;
   }
 
   .tab-navigation {
@@ -173,33 +191,55 @@ onUnmounted(() => {
   }
 
   .tab-btn {
-    padding: 12px 18px;
-    font-size: 15px;
-    gap: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    gap: 5px;
+  }
+
+  .audio-mode-btn {
+    height: 44px;
+    padding: 0 14px;
+    gap: 8px;
+    font-size: 13px;
+  }
+
+  .audio-icon {
+    width: 20px;
+    height: 20px;
   }
 
   .profile-toggle-btn {
-    padding: 12px 18px;
-    font-size: 15px;
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+
+  .profile-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .chevron-icon {
+    width: 16px;
+    height: 16px;
   }
 }
 
 /* Desktop (1024px - 1439px) */
 @media screen and (min-width: 1024px) and (max-width: 1439px) {
   .app-header {
-    padding: 16px 20px;
-    gap: 20px;
-    height: 100px;
+    padding: 8px 16px;
+    gap: 12px;
+    height: 60px;
   }
 
   .app-header-title {
-    font-size: 32px;
+    font-size: 22px;
   }
 
   .sidebar-toggle-btn {
-    width: 48px;
-    height: 48px;
-    font-size: 24px;
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
   }
 
   .tab-navigation {
@@ -208,37 +248,59 @@ onUnmounted(() => {
   }
 
   .tab-btn {
-    padding: 10px 14px;
-    font-size: 13px;
-    gap: 5px;
+    padding: 7px 12px;
+    font-size: 12px;
+    gap: 4px;
+  }
+
+  .audio-mode-btn {
+    height: 40px;
+    padding: 0 12px;
+    gap: 7px;
+    font-size: 12px;
+  }
+
+  .audio-icon {
+    width: 18px;
+    height: 18px;
   }
 
   .profile-toggle-btn {
-    padding: 10px 15px;
-    font-size: 14px;
+    padding: 7px 12px;
+    font-size: 12px;
+  }
+
+  .profile-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  .chevron-icon {
+    width: 14px;
+    height: 14px;
   }
 }
 
 /* Tablet (768px - 1023px) */
 @media screen and (min-width: 768px) and (max-width: 1023px) {
   .app-header {
-    height: 85px;
-    padding: 12px 16px;
-    gap: 12px;
+    height: 55px;
+    padding: 8px 12px;
+    gap: 10px;
   }
 
   .app-header-logo {
-    gap: 15px;
+    gap: 8px;
   }
 
   .app-header-title {
-    font-size: 26px;
+    font-size: 20px;
   }
 
   .sidebar-toggle-btn {
-    width: 42px;
-    height: 42px;
-    font-size: 20px;
+    width: 38px;
+    height: 38px;
+    font-size: 18px;
   }
 
   .tab-navigation {
@@ -248,7 +310,7 @@ onUnmounted(() => {
   }
 
   .tab-btn {
-    padding: 7px 9px;
+    padding: 6px 8px;
     font-size: 11px;
     gap: 3px;
     min-width: auto;
@@ -258,43 +320,63 @@ onUnmounted(() => {
     display: none;
   }
 
-  .profile-toggle-btn {
-    padding: 7px 10px;
-    font-size: 12px;
-    gap: 6px;
+  .header-actions {
+    gap: 8px;
   }
 
-  .profile-icon {
+  .audio-mode-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    gap: 0;
+  }
+
+  .audio-label {
+    display: none;
+  }
+
+  .audio-icon {
     width: 18px;
     height: 18px;
   }
 
+  .profile-toggle-btn {
+    padding: 6px 8px;
+    font-size: 11px;
+    gap: 5px;
+  }
+
+  .profile-icon {
+    width: 16px;
+    height: 16px;
+  }
+
   .chevron-icon {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
   }
 }
 
 /* Mobile (< 768px) */
 @media screen and (max-width: 767px) {
   .app-header {
-    height: 75px;
-    padding: 8px 10px;
-    gap: 8px;
+    height: 50px;
+    padding: 6px 8px;
+    gap: 6px;
   }
 
   .app-header-logo {
-    gap: 10px;
+    gap: 6px;
   }
 
   .app-header-title {
-    font-size: 22px;
+    font-size: 18px;
   }
 
   .sidebar-toggle-btn {
-    width: 38px;
-    height: 38px;
-    font-size: 18px;
+    width: 34px;
+    height: 34px;
+    font-size: 16px;
   }
 
   .tab-navigation {
@@ -306,9 +388,9 @@ onUnmounted(() => {
   }
 
   .tab-btn {
-    padding: 6px 8px;
+    padding: 5px 7px;
     font-size: 10px;
-    min-width: 70px;
+    min-width: 60px;
     gap: 2px;
   }
 
@@ -317,23 +399,43 @@ onUnmounted(() => {
   }
 
   .tab-btn span:first-child {
-    font-size: 16px;
+    font-size: 14px;
   }
 
-  .profile-toggle-btn {
-    padding: 6px 8px;
-    font-size: 11px;
-    gap: 4px;
+  .header-actions {
+    gap: 6px;
   }
 
-  .profile-icon {
+  .audio-mode-btn {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    gap: 0;
+  }
+
+  .audio-label {
+    display: none;
+  }
+
+  .audio-icon {
     width: 16px;
     height: 16px;
   }
 
+  .profile-toggle-btn {
+    padding: 5px 7px;
+    font-size: 10px;
+    gap: 3px;
+  }
+
+  .profile-icon {
+    width: 14px;
+    height: 14px;
+  }
+
   .chevron-icon {
-    width: 12px;
-    height: 12px;
+    width: 10px;
+    height: 10px;
   }
 }
 
@@ -402,10 +504,10 @@ onUnmounted(() => {
   background: none;
   border: none;
   color: #ccc;
-  padding: 10px 12px;
+  padding: 7px 10px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   transition: all 0.3s ease;
   display: flex;
@@ -425,6 +527,68 @@ onUnmounted(() => {
   box-shadow: 0 2px 8px rgba(78, 205, 196, 0.3);
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.audio-mode-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  color: white;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.audio-mode-btn:hover {
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+}
+
+.audio-mode-btn:active {
+  transform: translateY(0);
+}
+
+.audio-mode-btn.active {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  box-shadow: 0 4px 12px rgba(240, 147, 251, 0.4);
+}
+
+.audio-mode-btn.active:hover {
+  background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);
+  box-shadow: 0 6px 16px rgba(240, 147, 251, 0.5);
+}
+
+.audio-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  transition: transform 0.3s ease;
+}
+
+.audio-label {
+  transition: all 0.3s ease;
+}
+
+.audio-mode-btn:hover .audio-icon {
+  transform: scale(1.1);
+}
+
 .profile-menu-container {
   position: relative;
   flex-shrink: 0;
@@ -434,15 +598,15 @@ onUnmounted(() => {
   background: linear-gradient(135deg, #4ecdc4 0%, #45b7aa 100%);
   border: none;
   color: white;
-  padding: 10px 14px;
-  border-radius: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   transition: all 0.3s ease;
   box-shadow: 0 4px 12px rgba(78, 205, 196, 0.3);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
   flex-shrink: 0;
@@ -459,13 +623,13 @@ onUnmounted(() => {
 }
 
 .profile-icon {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
 }
 
 .chevron-icon {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   transition: transform 0.3s ease;
 }
 

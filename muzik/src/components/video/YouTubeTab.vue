@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { videoService } from '../../services/videoService.js'
 import HistorySection from '../history/HistorySection.vue'
+import PlayerControls from './PlayerControls.vue'
 
 const props = defineProps({
   instantPlayUrl: String,
@@ -10,6 +11,9 @@ const props = defineProps({
   instantPlayHistory: Array,
   addingToPlaylist: String,
   isInPlaylist: Function,
+  currentVideo: Object,
+  volume: Number,
+  showVolumeSlider: Boolean,
 })
 
 const emit = defineEmits([
@@ -21,6 +25,9 @@ const emit = defineEmits([
   'play-from-history',
   'clear-history',
   'add-from-history',
+  'adjust-volume',
+  'set-volume',
+  'toggle-volume-slider',
 ])
 
 // Search functionality
@@ -83,6 +90,22 @@ const handleSwitchToInstant = () => {
 
 <template>
   <div class="tab-content youtube-tab">
+    <!-- Player Controls -->
+    <PlayerControls
+      v-if="currentVideo"
+      :current-video="currentVideo"
+      :video-ids="videoIds"
+      :volume="volume"
+      :is-muted="isMuted"
+      :show-volume-slider="showVolumeSlider"
+      @play-previous="$emit('play-previous')"
+      @play-next="$emit('play-next')"
+      @toggle-mute="$emit('toggle-mute')"
+      @adjust-volume="$emit('adjust-volume', $event)"
+      @set-volume="$emit('set-volume', $event)"
+      @toggle-volume-slider="$emit('toggle-volume-slider')"
+    />
+
     <!-- Mode Switcher -->
     <div class="mode-switcher">
       <button

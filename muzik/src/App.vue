@@ -8,7 +8,7 @@ import PlaylistTab from './components/playlist/PlaylistTab.vue'
 import MoviesTab from './components/video/MoviesTab.vue'
 import LoginPage from './components/auth/LoginPage.vue'
 import { DEFAULT_ROUTE, ROUTES, isValidRoute } from './constants/routes.js'
-import { videoService, authService, playlistService } from './services/index.js'
+import { videoService, authService } from './services/index.js'
 import { eventBus } from './utils/eventBus.js'
 
 // Database integration
@@ -32,6 +32,7 @@ const showSidebar = ref(true) // Toggle sidebar visibility
 const isAuthenticated = ref(false)
 const currentUser = ref(null)
 const showProfileModal = ref(false)
+const audioOnlyMode = ref(false) // Audio-only mode toggle
 
 // Form data for adding new videos
 const newVideo = ref({
@@ -295,23 +296,28 @@ const initializePlayer = () => {
 
   try {
     player.value = new window.YT.Player('player', {
-      height: '100%',
-      width: '100%',
+      height: audioOnlyMode.value ? '1' : '100%',
+      width: audioOnlyMode.value ? '1' : '100%',
       videoId: videoId,
       playerVars: {
         autoplay: 0, // Don't autoplay - browser restrictions
-        controls: 1,
+        controls: audioOnlyMode.value ? 0 : 1, // Hide controls in audio-only mode
         loop: 0,
         modestbranding: 0,
         rel: 1,
         showinfo: 1,
         enablejsapi: 1,
+        vq: audioOnlyMode.value ? 'tiny' : 'default', // Set quality based on mode
       },
       events: {
         onReady: (event) => {
           console.log('Player ready!')
           isPlayerReady.value = true
           event.target.setVolume(volume.value)
+          // Set quality based on audio-only mode
+          if (audioOnlyMode.value) {
+            event.target.setPlaybackQuality('small')
+          }
           // Try to play - will fail gracefully if autoplay blocked
           try {
             event.target.playVideo()
@@ -593,22 +599,26 @@ const instantPlay = async () => {
       // If player not ready, initialize with this video
       if (window.YT) {
         player.value = new window.YT.Player('player', {
-          height: '100%',
-          width: '100%',
+          height: audioOnlyMode.value ? '1' : '100%',
+          width: audioOnlyMode.value ? '1' : '100%',
           videoId: videoId,
           playerVars: {
             autoplay: 1,
-            controls: 1,
+            controls: audioOnlyMode.value ? 0 : 1,
             loop: 0,
             modestbranding: 1,
             rel: 0,
             showinfo: 1,
+            vq: audioOnlyMode.value ? 'tiny' : 'default',
           },
           events: {
             onReady: (event) => {
               isPlayerReady.value = true
-              event.target.playVideo()
               event.target.setVolume(volume.value)
+              if (audioOnlyMode.value) {
+                event.target.setPlaybackQuality('small')
+              }
+              event.target.playVideo()
             },
             onStateChange: (event) => {
               if (event.data === window.YT.PlayerState.ENDED) {
@@ -641,7 +651,7 @@ const playPlaylistItem = (data) => {
     return
   }
   
-  const { videoId, title, playlist } = data
+  const { videoId, playlist } = data
   
   // If playlist data is provided, set up playlist playback
   if (playlist && playlist.videoIds && playlist.videoIds.length > 0) {
@@ -697,22 +707,26 @@ const playPlaylistItem = (data) => {
     } else {
       if (window.YT && window.YT.Player) {
         player.value = new window.YT.Player('player', {
-          height: '100%',
-          width: '100%',
+          height: audioOnlyMode.value ? '1' : '100%',
+          width: audioOnlyMode.value ? '1' : '100%',
           videoId: videoId,
           playerVars: {
             autoplay: 1,
-            controls: 1,
+            controls: audioOnlyMode.value ? 0 : 1,
             loop: 0,
             modestbranding: 1,
             rel: 0,
             showinfo: 1,
             enablejsapi: 1,
+            vq: audioOnlyMode.value ? 'tiny' : 'default',
           },
           events: {
             onReady: (event) => {
               isPlayerReady.value = true
               event.target.setVolume(volume.value)
+              if (audioOnlyMode.value) {
+                event.target.setPlaybackQuality('small')
+              }
               event.target.playVideo().catch(() => {
                 console.log('Autoplay blocked, user needs to click play')
               })
@@ -744,23 +758,27 @@ const initPlaylistPlayer = (videoId) => {
     
     // Create new player
     player.value = new window.YT.Player('player', {
-      height: '100%',
-      width: '100%',
+      height: audioOnlyMode.value ? '1' : '100%',
+      width: audioOnlyMode.value ? '1' : '100%',
       videoId: videoId,
       playerVars: {
         autoplay: 1,
-        controls: 1,
+        controls: audioOnlyMode.value ? 0 : 1,
         loop: 0,
         modestbranding: 0,
         rel: 0,
         showinfo: 1,
         enablejsapi: 1,
+        vq: audioOnlyMode.value ? 'tiny' : 'default',
       },
       events: {
         onReady: (event) => {
           console.log('Playlist player ready!')
           isPlayerReady.value = true
           event.target.setVolume(volume.value)
+          if (audioOnlyMode.value) {
+            event.target.setPlaybackQuality('small')
+          }
           event.target.playVideo().catch(() => {
             console.log('Autoplay blocked, user needs to click play')
           })
@@ -844,195 +862,6 @@ const playPlaylistAll = (data) => {
   initPlayer()
 }
 
-const playPlaylist = async (playlist) => {
-  console.log('playPlaylist called with:', playlist)
-  
-  if (!playlist || !playlist.id) {
-    console.error('Invalid playlist:', playlist)
-    alert('Invalid playlist')
-    return
-  }
-
-  try {
-    loading.value = true
-    console.log('Fetching playlist details for ID:', playlist.id)
-    
-    // Fetch full playlist with items
-    const fullPlaylist = await playlistService.getById(playlist.id)
-    console.log('Fetched playlist with items:', fullPlaylist)
-    
-    if (!fullPlaylist || !fullPlaylist.items || fullPlaylist.items.length === 0) {
-      alert('This playlist is empty!')
-      return
-    }
-
-    // Extract video IDs from playlist items
-    const extractedVideoIds = []
-    console.log('Playlist type:', fullPlaylist.type)
-    console.log('Processing', fullPlaylist.items.length, 'items')
-    
-    for (const item of fullPlaylist.items) {
-      let videoId = null
-      
-      if (fullPlaylist.type === 'video' && item.video_id) {
-        // Video playlist: use video_id directly
-        videoId = item.video_id
-        console.log('Video item found, video_id:', videoId)
-      } else if (fullPlaylist.type === 'film') {
-        // Film playlist: check film_video_url from films table
-        if (item.film_video_url) {
-          // Extract video_id from film_video_url
-          const regex = /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/
-          const match = item.film_video_url.match(regex)
-          if (match) {
-            videoId = match[1]
-            console.log('Film item - extracted video_id from film_video_url:', videoId)
-          } else {
-            console.warn('Could not extract video_id from film_video_url:', item.film_video_url)
-          }
-        } else if (item.video_url) {
-          // Fallback: try video_url (legacy)
-          const regex = /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/
-          const match = item.video_url.match(regex)
-          if (match) {
-            videoId = match[1]
-            console.log('Film item - extracted video_id from video_url (legacy):', videoId)
-          }
-        } else {
-          console.warn('Film item has no video_url:', item)
-        }
-      }
-      
-      if (videoId && !extractedVideoIds.includes(videoId)) {
-        extractedVideoIds.push(videoId)
-      }
-    }
-
-    console.log('Extracted video IDs:', extractedVideoIds)
-
-    if (extractedVideoIds.length === 0) {
-      alert('No valid video IDs found in this playlist!')
-      return
-    }
-
-    // Update videos and videoIds
-    videos.value = extractedVideoIds.map((vid, idx) => ({
-      id: idx,
-      video_id: vid,
-      title: `Playlist Item ${idx + 1}`,
-    }))
-    videoIds.value = extractedVideoIds
-    currentVideoIndex.value = 0
-
-    // Switch to playlist tab if not already there
-    if (activeTab.value !== ROUTES.PLAYLIST) {
-      activeTab.value = ROUTES.PLAYLIST
-    }
-
-    // Initialize or load player with first video
-    const firstVideoId = extractedVideoIds[0]
-    
-    // Check if player exists and has the loadVideoById method
-    const playerIsValid = player.value && typeof player.value.loadVideoById === 'function'
-    
-    if (playerIsValid && isPlayerReady.value) {
-      // Player already exists and ready, just load the video
-      console.log('Using existing player, loading video:', firstVideoId)
-      player.value.loadVideoById(firstVideoId)
-      player.value.playVideo().catch(() => {
-        console.log('Autoplay blocked, user needs to click play')
-      })
-    } else {
-      // Need to initialize player - similar to instantPlay logic
-      console.log('Initializing new player with video:', firstVideoId)
-      
-      // Wait for YouTube API to be ready if needed
-      const initPlayer = () => {
-        if (!window.YT || !window.YT.Player) {
-          console.warn('YouTube API not ready yet, waiting...')
-          setTimeout(initPlayer, 100)
-          return
-        }
-        
-        try {
-          // Destroy existing player if it exists but is invalid
-          if (player.value && !playerIsValid) {
-            console.log('Destroying invalid player')
-            try {
-              player.value.destroy?.()
-            } catch (e) {
-              console.warn('Error destroying old player:', e)
-            }
-            player.value = null
-            isPlayerReady.value = false
-          }
-          
-          // Create new player
-          player.value = new window.YT.Player('player', {
-            height: '100%',
-            width: '100%',
-            videoId: firstVideoId,
-            playerVars: {
-              autoplay: 1,
-              controls: 1,
-              loop: 0,
-              modestbranding: 0,
-              rel: 0,
-              showinfo: 1,
-              enablejsapi: 1,
-            },
-            events: {
-              onReady: (event) => {
-                console.log('Playlist player ready!')
-                isPlayerReady.value = true
-                event.target.setVolume(volume.value)
-                event.target.playVideo().catch(() => {
-                  console.log('Autoplay blocked, user needs to click play')
-                })
-              },
-              onStateChange: (event) => {
-                // When video ends, play next video
-                if (event.data === window.YT.PlayerState.ENDED) {
-                  playNextVideo()
-                }
-              },
-              onError: (event) => {
-                console.error('Player error:', event.data)
-              },
-            },
-          })
-        } catch (error) {
-          console.error('Failed to create player:', error)
-          alert('Failed to initialize video player. Please try again.')
-        }
-      }
-      
-      // Check if DOM element exists
-      setTimeout(() => {
-        const playerElement = document.getElementById('player')
-        if (playerElement) {
-          initPlayer()
-        } else {
-          console.warn('Player element not found, retrying...')
-          setTimeout(() => {
-            const retryElement = document.getElementById('player')
-            if (retryElement) {
-              initPlayer()
-            } else {
-              alert('Video player element not found. Please refresh the page.')
-            }
-          }, 500)
-        }
-      }, 100)
-    }
-  } catch (error) {
-    console.error('Error playing playlist:', error)
-    alert(`Error: ${error.message || 'Failed to play playlist'}`)
-  } finally {
-    loading.value = false
-  }
-}
-
 const clearHistory = () => {
   if (confirm('Clear all instant play history?')) {
     instantPlayHistory.value = []
@@ -1101,6 +930,49 @@ const handleCancelAdd = () => {
 
 const handleToggleAddForm = () => {
   showAddForm.value = !showAddForm.value
+}
+
+const toggleAudioOnlyMode = () => {
+  audioOnlyMode.value = !audioOnlyMode.value
+  
+  // Reinitialize player with new settings
+  if (player.value && isPlayerReady.value && videoIds.value.length > 0) {
+    const currentTime = player.value.getCurrentTime()
+    const playerState = player.value.getPlayerState()
+    const wasPlaying = playerState === window.YT.PlayerState.PLAYING
+    
+    // Destroy and recreate player
+    try {
+      player.value.destroy()
+    } catch (e) {
+      console.warn('Error destroying player:', e)
+    }
+    
+    player.value = null
+    isPlayerReady.value = false
+    
+    // Reinitialize after a brief delay
+    setTimeout(() => {
+      initializePlayer()
+      
+      // Wait for player to be ready, then restore playback
+      const checkReady = setInterval(() => {
+        if (isPlayerReady.value && player.value) {
+          clearInterval(checkReady)
+          
+          // Seek to saved position
+          try {
+            player.value.seekTo(currentTime, true)
+            if (wasPlaying) {
+              player.value.playVideo()
+            }
+          } catch (e) {
+            console.warn('Error restoring playback:', e)
+          }
+        }
+      }, 100)
+    }, 100)
+  }
 }
 
 // Authentication handlers
@@ -1172,7 +1044,20 @@ const checkAuthentication = () => {
 
 // Computed properties
 const currentVideo = computed(() => {
-  return videos.value[currentVideoIndex.value] || null
+  // If we have videos in playlist, return current one
+  if (videos.value.length > 0 && videos.value[currentVideoIndex.value]) {
+    return videos.value[currentVideoIndex.value]
+  }
+  
+  // If no videos but we have instant play history, return the last played
+  if (instantPlayHistory.value.length > 0) {
+    return {
+      title: instantPlayHistory.value[0].title,
+      video_id: instantPlayHistory.value[0].video_id,
+    }
+  }
+  
+  return null
 })
 
 // Watch for authentication changes and fetch videos when user logs in
@@ -1287,13 +1172,15 @@ onUnmounted(() => {
     <AppHeader
       :show-sidebar="showSidebar"
       :active-tab="activeTab"
+      :audio-only-mode="audioOnlyMode"
       @toggle-sidebar="toggleSidebar"
       @change-tab="handleChangeTab"
       @profile="handleProfile"
       @signout="handleSignOut"
+      @toggle-audio-mode="toggleAudioOnlyMode"
     />
     <main>
-    <VideoPlayer :loading="loading" :video-ids="videoIds" :show-sidebar="showSidebar" />
+    <VideoPlayer :loading="loading" :video-ids="videoIds" :show-sidebar="showSidebar" :audio-only-mode="audioOnlyMode" :is-player-ready="isPlayerReady" />
 
     <div v-show="showSidebar" id="list-container">
       <YouTubeTab
@@ -1304,11 +1191,17 @@ onUnmounted(() => {
         :instant-play-history="instantPlayHistory"
         :adding-to-playlist="addingToPlaylist"
         :is-in-playlist="isInPlaylist"
+        :current-video="currentVideo"
+        :volume="volume"
+        :show-volume-slider="showVolumeSlider"
         @update:instant-play-url="instantPlayUrl = $event"
         @instant-play="instantPlay"
         @play-previous="playPreviousVideo"
         @play-next="playNextVideo"
         @toggle-mute="toggleMute"
+        @adjust-volume="adjustVolume"
+        @set-volume="setVolume"
+        @toggle-volume-slider="toggleVolumeSlider"
         @play-from-history="playFromHistory"
         @clear-history="clearHistory"
         @add-from-history="addFromHistory"
@@ -1407,9 +1300,9 @@ onUnmounted(() => {
 <style scoped>
 main {
   width: 100vw;
-  height: calc(100vh - 100px);
+  height: calc(100vh - 60px);
   overflow: hidden;
-  margin-top: 100px;
+  margin-top: 60px;
   background-color: white;
   color: white;
   display: flex;
@@ -1424,24 +1317,24 @@ main {
 /* Large Desktop (>= 1440px) */
 @media screen and (min-width: 1440px) {
   main {
-    height: calc(100vh - 110px);
-    margin-top: 110px;
+    height: calc(100vh - 70px);
+    margin-top: 70px;
   }
 }
 
 /* Desktop (1024px - 1439px) */
 @media screen and (min-width: 1024px) and (max-width: 1439px) {
   main {
-    height: calc(100vh - 100px);
-    margin-top: 100px;
+    height: calc(100vh - 60px);
+    margin-top: 60px;
   }
 }
 
 /* Tablet (768px - 1023px) */
 @media screen and (min-width: 768px) and (max-width: 1023px) {
   main {
-    height: calc(100vh - 85px);
-    margin-top: 85px;
+    height: calc(100vh - 55px);
+    margin-top: 55px;
     gap: 12px;
     padding: 12px;
   }
@@ -1450,8 +1343,8 @@ main {
 /* Mobile (< 768px) */
 @media screen and (max-width: 767px) {
   main {
-    height: calc(100vh - 75px);
-    margin-top: 75px;
+    height: calc(100vh - 50px);
+    margin-top: 50px;
     gap: 10px;
     padding: 10px;
   }
