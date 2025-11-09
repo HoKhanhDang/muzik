@@ -200,10 +200,6 @@ const handleSwitchToInstant = () => {
                   <SvgIcon name="play" :size="14" />
                   <span>Play</span>
                 </button>
-                <button @click="handleAddToPlaylist(video)" class="btn-add">
-                  <SvgIcon name="add" :size="14" />
-                  <span>Add</span>
-                </button>
               </div>
             </div>
           </div>
@@ -367,22 +363,28 @@ const handleSwitchToInstant = () => {
   padding: 12px;
   border-radius: 8px;
   margin-bottom: 15px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .search-box {
   display: flex;
   gap: 10px;
   align-items: center;
+  width: 100%;
+  flex-wrap: wrap;
 }
 
 .search-input {
   flex: 1;
+  min-width: 200px;
   padding: 12px;
   border: 1px solid #555;
   border-radius: 8px;
   background-color: #2a2a2a;
   color: white;
   font-size: 14px;
+  box-sizing: border-box;
 }
 
 .search-input:focus {
@@ -410,6 +412,7 @@ const handleSwitchToInstant = () => {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 .search-btn:hover:not(:disabled) {
@@ -489,7 +492,7 @@ const handleSwitchToInstant = () => {
 }
 
 .btn-play {
-  flex: 1;
+  width: 100%;
   padding: 8px;
   background: #ff0000;
   color: white;
@@ -509,26 +512,6 @@ const handleSwitchToInstant = () => {
   transform: translateY(-1px);
 }
 
-.btn-add {
-  flex: 1;
-  padding: 8px;
-  background: #2a2a2a;
-  color: white;
-  border: 1px solid #555;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-}
-
-.btn-add:hover {
-  background: #3a3a3a;
-  border-color: #4ecdc4;
-}
 
 .error-message {
   padding: 12px;
@@ -672,6 +655,14 @@ const handleSwitchToInstant = () => {
 
 /* Tablet */
 @media screen and (min-width: 768px) and (max-width: 1023px) {
+  .search-section {
+    padding: 10px;
+  }
+
+  .search-input {
+    min-width: 180px;
+  }
+
   .video-grid {
     grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
     gap: 12px;
@@ -689,11 +680,20 @@ const handleSwitchToInstant = () => {
     gap: 8px;
   }
 
-  .search-box {
-    flex-direction: column;
+  .search-section {
+    padding: 10px;
   }
 
-  .search-input,
+  .search-box {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .search-input {
+    width: 100%;
+    min-width: 0;
+  }
+
   .search-btn {
     width: 100%;
   }
@@ -707,12 +707,7 @@ const handleSwitchToInstant = () => {
     height: 200px;
   }
 
-  .video-actions {
-    flex-direction: column;
-  }
-
-  .btn-play,
-  .btn-add {
+  .btn-play {
     width: 100%;
   }
 }
