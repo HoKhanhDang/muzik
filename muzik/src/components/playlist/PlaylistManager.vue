@@ -1,5 +1,6 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { playlistService } from '../../services/index.js'
 import PlaylistList from './PlaylistList.vue'
 import PlaylistForm from './PlaylistForm.vue'
@@ -19,7 +20,7 @@ const handlePlayAll = (data) => {
 }
 
 const playlists = ref([])
-const loading = ref(false)
+// const loading = ref(false) // Replaced by isLoading from useQuery
 const showCreateForm = ref(false)
 const selectedPlaylist = ref(null)
 const viewMode = ref('list') // 'list' | 'detail' | 'create'
@@ -27,12 +28,19 @@ const viewMode = ref('list') // 'list' | 'detail' | 'create'
 const filmPlaylists = computed(() => playlists.value.filter(p => p.type === 'film'))
 const videoPlaylists = computed(() => playlists.value.filter(p => p.type === 'video'))
 
-const fetchPlaylists = async () => {
-  try {
-    loading.value = true
-    const data = await playlistService.getAll()
-    console.log('Fetched playlists data:', data) // Debug log
-    playlists.value = (data || []).map(p => {
+const queryClient = useQueryClient()
+
+const { data: playlistsData, isLoading: loading } = useQuery({
+  queryKey: ['playlists'],
+  queryFn: () => playlistService.getAll(),
+  staleTime: 5 * 60 * 1000, // 5 minutes
+})
+
+// Sync playlists ref with query data and process items_count
+watch(playlistsData, (newData) => {
+  if (newData) {
+    console.log('Fetched playlists data:', newData) // Debug log
+    playlists.value = (newData || []).map(p => {
       console.log('Playlist item:', p, 'items_count:', p.items_count, 'type:', typeof p.items_count) // Debug log
       return {
         ...p,
@@ -40,12 +48,12 @@ const fetchPlaylists = async () => {
       }
     })
     console.log('Processed playlists:', playlists.value) // Debug log
-  } catch (error) {
-    console.error('Error fetching playlists:', error)
-    alert(`Error: ${error.message || 'Failed to load playlists'}`)
-  } finally {
-    loading.value = false
   }
+}, { immediate: true })
+
+// Keep fetchPlaylists for compatibility if needed, but it just refetches
+const fetchPlaylists = async () => {
+  await queryClient.invalidateQueries({ queryKey: ['playlists'] })
 }
 
 const handleCreatePlaylist = async (playlistData) => {
@@ -53,7 +61,7 @@ const handleCreatePlaylist = async (playlistData) => {
     console.log('Creating playlist:', playlistData)
     loading.value = true
     await playlistService.create(playlistData)
-    await fetchPlaylists()
+    await queryClient.invalidateQueries({ queryKey: ['playlists'] })
     showCreateForm.value = false
     viewMode.value = 'list'
   } catch (error) {
@@ -70,7 +78,7 @@ const handleDeletePlaylist = async (id) => {
   try {
     loading.value = true
     await playlistService.delete(id)
-    await fetchPlaylists()
+    await queryClient.invalidateQueries({ queryKey: ['playlists'] })
     if (selectedPlaylist.value?.id === id) {
       selectedPlaylist.value = null
       viewMode.value = 'list'
@@ -135,9 +143,9 @@ const handlePlaylistUpdated = async () => {
   }
 }
 
-onMounted(() => {
-  fetchPlaylists()
-})
+// onMounted(() => {
+//   fetchPlaylists()
+// })
 </script>
 
 <template>

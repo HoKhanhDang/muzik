@@ -3,4 +3,8 @@ import './assets/main.css'
 import { createApp } from 'vue'
 import App from './App.vue'
 
-createApp(App).mount('#app')
+import { VueQueryPlugin } from '@tanstack/vue-query'
+
+const app = createApp(App)
+app.use(VueQueryPlugin)
+app.mount('#app')

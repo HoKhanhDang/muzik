@@ -19,6 +19,7 @@
     "dev:all": "concurrently \"npm run dev:server\" \"npm run dev\""
   },
   "dependencies": {
+    "@tanstack/vue-query": "^5.92.0",
     "vue": "^3.5.22"
   },
   "devDependencies": {

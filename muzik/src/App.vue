@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import AppHeader from './components/layout/AppHeader.vue'
 import VideoPlayer from './components/video/VideoPlayer.vue'
 import InstantPlayTab from './components/video/InstantPlayTab.vue'
@@ -19,7 +20,7 @@ const currentVideoIndex = ref(0)
 const player = ref(null)
 const isPlayerReady = ref(false)
 const showAddForm = ref(false)
-const loading = ref(false)
+// const loading = ref(false) // Replaced by isLoading from useQuery
 const volume = ref(50)
 const isMuted = ref(false)
 const showVolumeSlider = ref(false)
@@ -55,22 +56,26 @@ const youtubeApiReady = ref(false)
 const networkQuality = ref('good') // 'good', 'medium', 'slow', 'offline'
 const networkCleanup = ref(null) // Cleanup function for network monitoring
 
-const fetchVideos = async () => {
-  try {
-    loading.value = true
-    const data = await videoService.getAll()
-    videos.value = data
-    videoIds.value = data.map((video) => video.video_id)
+const queryClient = useQueryClient()
 
-    // Check if we can initialize player now
+const { data: videosData, isLoading: loading, isError, error } = useQuery({
+  queryKey: ['videos'],
+  queryFn: videoService.getAll,
+  staleTime: 5 * 60 * 1000, // 5 minutes
+})
+
+// Sync videos ref with query data
+watch(videosData, (newData) => {
+  if (newData) {
+    videos.value = newData
+    videoIds.value = newData.map((video) => video.video_id)
     checkAndInitializePlayer()
-  } catch (error) {
-    console.error('Error fetching videos:', error.message)
-    // Allow instant play even if fetch fails
-    checkAndInitializePlayer()
-  } finally {
-    loading.value = false
   }
+}, { immediate: true })
+
+// Keep fetchVideos for compatibility if needed, but it just refetches
+const fetchVideos = async () => {
+  await queryClient.invalidateQueries({ queryKey: ['videos'] })
 }
 
 // Check if both YouTube API and videos are ready, then initialize
@@ -190,7 +195,7 @@ const addVideo = async () => {
     }
 
     await videoService.create(newVideo.value)
-    await fetchVideos() // Refresh the list
+    await queryClient.invalidateQueries({ queryKey: ['videos'] }) // Refresh the list via query invalidation
     resetForm()
     showAddForm.value = false
   } catch (error) {
@@ -207,7 +212,7 @@ const deleteVideo = async (id) => {
   try {
     loading.value = true
     await videoService.delete(id)
-    await fetchVideos() // Refresh the list
+    await queryClient.invalidateQueries({ queryKey: ['videos'] }) // Refresh the list
   } catch (error) {
     console.error('Error deleting video:', error)
     alert(`Error: ${error.message || 'Error deleting video'}`)

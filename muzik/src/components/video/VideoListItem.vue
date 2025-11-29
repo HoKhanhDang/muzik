@@ -71,6 +71,7 @@ watch(
           :src="getThumbnailUrl"
           :alt="video.title"
           @error="handleThumbnailError"
+          loading="lazy"
         />
         <div v-show="!getThumbnailUrl || thumbnailError" class="placeholder-thumbnail">
           <Icon name="video_playlists" :size="24" />
