@@ -8,6 +8,7 @@ import YouTubeTab from './components/video/YouTubeTab.vue'
 import PlaylistTab from './components/playlist/PlaylistTab.vue'
 import MoviesTab from './components/video/MoviesTab.vue'
 import LoginPage from './components/auth/LoginPage.vue'
+import DraggableBubble from './components/common/DraggableBubble.vue'
 import { DEFAULT_ROUTE, ROUTES, isValidRoute } from './constants/routes.js'
 import { videoService, authService } from './services/index.js'
 import { eventBus } from './utils/eventBus.js'
@@ -1416,6 +1417,9 @@ onUnmounted(() => {
   <LoginPage v-if="!isAuthenticated" @login-success="handleLoginSuccess" />
 
   <template v-else>
+    <!-- Draggable Bubble Tab -->
+    <DraggableBubble />
+    
     <AppHeader
       :show-sidebar="showSidebar"
       :active-tab="activeTab"
