@@ -1,21 +1,21 @@
 <template>
-  <div class="todo-container">
+  <div class="todo-container" :class="{ 'is-fullscreen': isFullscreen }">
     <!-- Add Task Form -->
     <div class="add-task-form">
-      <input 
+      <input
         v-model="localNewTask.title"
-        type="text" 
+        type="text"
         placeholder="Thêm task mới..."
         class="task-input"
         @keyup.enter="addTask"
       />
-      
+
       <!-- Difficulty Selector -->
       <div class="difficulty-selector">
         <label>🔥 Độ khó:</label>
         <div class="fire-icons">
-          <span 
-            v-for="n in 5" 
+          <span
+            v-for="n in 5"
             :key="n"
             class="fire-icon"
             :class="{ active: n <= localNewTask.difficulty }"
@@ -27,9 +27,17 @@
       </div>
 
       <button class="btn btn-add" @click="addTask" :disabled="!localNewTask.title.trim()">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="12" y1="5" x2="12" y2="19"/>
-          <line x1="5" y1="12" x2="19" y2="12"/>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <line x1="5" y1="12" x2="19" y2="12" />
         </svg>
         Thêm Task
       </button>
@@ -37,14 +45,14 @@
 
     <!-- Task List -->
     <div class="task-list" v-if="tasks.length > 0">
-      <div 
-        v-for="task in tasks" 
+      <div
+        v-for="task in tasks"
         :key="task.id"
         class="task-item"
-        :class="{ 
-          'completed': task.completed,
-          'editing': editingTaskId === task.id,
-          'has-session': task.linkedSessionId
+        :class="{
+          completed: task.completed,
+          editing: editingTaskId === task.id,
+          'has-session': task.linkedSessionId,
         }"
       >
         <!-- Task Main -->
@@ -52,8 +60,17 @@
           <!-- Checkbox -->
           <div class="task-checkbox" @click="toggleTaskComplete(task.id)">
             <transition name="check">
-              <svg v-if="task.completed" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                <polyline points="20 6 9 17 4 12"/>
+              <svg
+                v-if="task.completed"
+                xmlns="http://www.w3.org/2000/svg"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="3"
+              >
+                <polyline points="20 6 9 17 4 12" />
               </svg>
             </transition>
           </div>
@@ -61,16 +78,16 @@
           <!-- Task Content -->
           <div class="task-content">
             <div class="task-header">
-              <input 
+              <input
                 v-if="editingTaskId === task.id"
                 v-model="task.title"
                 class="task-edit-input"
-                @blur="saveTask(task.id)"
-                @keyup.enter="saveTask(task.id)"
+                @blur="saveTask"
+                @keyup.enter="saveTask"
                 @keyup.esc="cancelEdit"
               />
               <h4 v-else @dblclick="startEdit(task.id)">{{ task.title }}</h4>
-              
+
               <!-- Difficulty Display -->
               <div class="task-difficulty">
                 <span v-for="n in task.difficulty" :key="n" class="fire-small">🔥</span>
@@ -81,8 +98,8 @@
             <div v-if="task.completed" class="task-satisfaction">
               <label>⭐ Độ hài lòng:</label>
               <div class="star-icons">
-                <span 
-                  v-for="n in 5" 
+                <span
+                  v-for="n in 5"
                   :key="n"
                   class="star-icon"
                   :class="{ active: n <= task.satisfaction }"
@@ -94,9 +111,7 @@
             </div>
 
             <!-- Note -->
-            <div v-if="task.note" class="task-note">
-              📝 {{ task.note }}
-            </div>
+            <div v-if="task.note" class="task-note">📝 {{ task.note }}</div>
 
             <!-- Session Link -->
             <div v-if="task.linkedSessionId" class="task-session-link">
@@ -106,45 +121,74 @@
             <!-- Subtasks Section -->
             <div v-if="task.subtasks && task.subtasks.length > 0" class="subtasks">
               <button class="subtask-toggle" @click="toggleSubtasks(task.id)">
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline :points="showSubtasksMap[task.id] ? '18 15 12 9 6 15' : '6 9 12 15 18 9'"/>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <polyline
+                    :points="showSubtasksMap[task.id] ? '18 15 12 9 6 15' : '6 9 12 15 18 9'"
+                  />
                 </svg>
                 {{ task.subtasks.length }} subtask{{ task.subtasks.length > 1 ? 's' : '' }}
               </button>
-              
+
               <transition name="slide-down">
                 <div v-if="showSubtasksMap[task.id]" class="subtask-list">
-                  <div 
-                    v-for="(subtask, index) in task.subtasks" 
+                  <div
+                    v-for="(subtask, index) in task.subtasks"
                     :key="index"
                     class="subtask-item"
-                    :class="{ 'completed': subtask.completed }"
+                    :class="{ completed: subtask.completed }"
                   >
                     <div class="subtask-checkbox" @click="toggleSubtaskComplete(task.id, index)">
                       <transition name="check">
-                        <svg v-if="subtask.completed" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                          <polyline points="20 6 9 17 4 12"/>
+                        <svg
+                          v-if="subtask.completed"
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="3"
+                        >
+                          <polyline points="20 6 9 17 4 12" />
                         </svg>
                       </transition>
                     </div>
                     <span class="subtask-title">{{ subtask.title }}</span>
                     <button class="btn-delete-subtask" @click="deleteSubtask(task.id, index)">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="18" y1="6" x2="6" y2="18"/>
-                        <line x1="6" y1="6" x2="18" y2="18"/>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
                       </svg>
                     </button>
                   </div>
-                  
+
                   <!-- Add Subtask Form -->
                   <div class="add-subtask">
-                    <input 
+                    <input
                       v-model="newSubtaskTitle[task.id]"
-                      type="text" 
+                      type="text"
                       placeholder="Thêm subtask..."
                       @keyup.enter="addSubtask(task.id)"
                     />
-                    <button @click="addSubtask(task.id)" :disabled="!newSubtaskTitle[task.id]">+</button>
+                    <button @click="addSubtask(task.id)" :disabled="!newSubtaskTitle[task.id]">
+                      +
+                    </button>
                   </div>
                 </div>
               </transition>
@@ -155,14 +199,16 @@
               <div class="subtask-list">
                 <!-- Add Subtask Form -->
                 <div class="add-subtask">
-                  <input 
+                  <input
                     v-model="newSubtaskTitle[task.id]"
-                    type="text" 
+                    type="text"
                     placeholder="Thêm subtask đầu tiên..."
                     @keyup.enter="addSubtask(task.id)"
                     ref="subtaskInput"
                   />
-                  <button @click="addSubtask(task.id)" :disabled="!newSubtaskTitle[task.id]">+</button>
+                  <button @click="addSubtask(task.id)" :disabled="!newSubtaskTitle[task.id]">
+                    +
+                  </button>
                 </div>
               </div>
             </div>
@@ -176,7 +222,7 @@
           <!-- Task Actions -->
           <div class="task-actions">
             <!-- Link to current session -->
-            <button 
+            <button
               v-if="currentSessionId && !task.linkedSessionId && !task.completed"
               class="btn-action"
               @click="linkTaskToSession(task.id)"
@@ -186,23 +232,23 @@
             </button>
 
             <!-- Add Note -->
-            <button 
-              class="btn-action"
-              @click="toggleNoteEdit(task.id)"
-              title="Thêm ghi chú"
-            >
+            <button class="btn-action" @click="toggleNoteEdit(task.id)" title="Thêm ghi chú">
               📝
             </button>
 
             <!-- Delete -->
-            <button 
-              class="btn-action btn-delete"
-              @click="deleteTask(task.id)"
-              title="Xóa"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18"/>
-                <line x1="6" y1="6" x2="18" y2="18"/>
+            <button class="btn-action btn-delete" @click="deleteTask(task.id)" title="Xóa">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
               </svg>
             </button>
           </div>
@@ -211,11 +257,7 @@
         <!-- Note Editor -->
         <transition name="slide-down">
           <div v-if="editingNoteId === task.id" class="note-editor">
-            <textarea 
-              v-model="task.note"
-              placeholder="Thêm ghi chú..."
-              @blur="saveNote(task.id)"
-            ></textarea>
+            <textarea v-model="task.note" placeholder="Thêm ghi chú..." @blur="saveNote"></textarea>
           </div>
         </transition>
       </div>
@@ -247,25 +289,24 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
 
 const props = defineProps({
   tasks: {
     type: Array,
-    default: () => []
+    default: () => [],
   },
   currentSessionId: {
     type: Number,
-    default: null
-  }
+    default: null,
+  },
+  isFullscreen: {
+    type: Boolean,
+    default: false,
+  },
 })
 
-const emit = defineEmits([
-  'update:tasks',
-  'task-completed',
-  'task-added',
-  'task-deleted'
-])
+const emit = defineEmits(['update:tasks', 'task-completed', 'task-added', 'task-deleted'])
 
 const localNewTask = ref({
   title: '',
@@ -283,9 +324,9 @@ const showSubtasksMap = ref({})
 const newSubtaskTitle = ref({})
 
 // Computed
-const completedTasks = computed(() => props.tasks.filter(t => t.completed).length)
-const completionRate = computed(() => 
-  props.tasks.length > 0 ? Math.round((completedTasks.value / props.tasks.length) * 100) : 0
+const completedTasks = computed(() => props.tasks.filter((t) => t.completed).length)
+const completionRate = computed(() =>
+  props.tasks.length > 0 ? Math.round((completedTasks.value / props.tasks.length) * 100) : 0,
 )
 
 // Methods
@@ -321,35 +362,35 @@ const addTask = () => {
 }
 
 const toggleTaskComplete = (taskId) => {
-  const updatedTasks = props.tasks.map(task => {
+  const updatedTasks = props.tasks.map((task) => {
     if (task.id === taskId) {
       const wasCompleted = task.completed
       const updated = { ...task, completed: !task.completed }
-      
+
       if (!wasCompleted) {
         // Task just completed - trigger celebration
         emit('task-completed', updated)
         playCompletionEffect()
       }
-      
+
       return updated
     }
     return task
   })
-  
+
   emit('update:tasks', updatedTasks)
 }
 
 const updateSatisfaction = (taskId, rating) => {
-  const updatedTasks = props.tasks.map(task => 
-    task.id === taskId ? { ...task, satisfaction: rating } : task
+  const updatedTasks = props.tasks.map((task) =>
+    task.id === taskId ? { ...task, satisfaction: rating } : task,
   )
   emit('update:tasks', updatedTasks)
 }
 
 const deleteTask = (taskId) => {
   if (confirm('Bạn có chắc muốn xóa task này?')) {
-    const updatedTasks = props.tasks.filter(task => task.id !== taskId)
+    const updatedTasks = props.tasks.filter((task) => task.id !== taskId)
     emit('update:tasks', updatedTasks)
     emit('task-deleted', taskId)
   }
@@ -359,7 +400,7 @@ const startEdit = (taskId) => {
   editingTaskId.value = taskId
 }
 
-const saveTask = (taskId) => {
+const saveTask = () => {
   editingTaskId.value = null
   emit('update:tasks', [...props.tasks])
 }
@@ -372,14 +413,14 @@ const toggleNoteEdit = (taskId) => {
   editingNoteId.value = editingNoteId.value === taskId ? null : taskId
 }
 
-const saveNote = (taskId) => {
+const saveNote = () => {
   editingNoteId.value = null
   emit('update:tasks', [...props.tasks])
 }
 
 const linkTaskToSession = (taskId) => {
-  const updatedTasks = props.tasks.map(task => 
-    task.id === taskId ? { ...task, linkedSessionId: props.currentSessionId } : task
+  const updatedTasks = props.tasks.map((task) =>
+    task.id === taskId ? { ...task, linkedSessionId: props.currentSessionId } : task,
   )
   emit('update:tasks', updatedTasks)
 }
@@ -390,13 +431,13 @@ const toggleSubtasks = (taskId) => {
 
 const initializeSubtasks = (taskId) => {
   // Ensure task has subtasks array
-  const updatedTasks = props.tasks.map(task => {
+  const updatedTasks = props.tasks.map((task) => {
     if (task.id === taskId && !task.subtasks) {
       return { ...task, subtasks: [] }
     }
     return task
   })
-  
+
   emit('update:tasks', updatedTasks)
   showSubtasksMap.value[taskId] = true
 }
@@ -405,11 +446,11 @@ const addSubtask = (taskId) => {
   const title = newSubtaskTitle.value[taskId]
   if (!title || !title.trim()) return
 
-  const updatedTasks = props.tasks.map(task => {
+  const updatedTasks = props.tasks.map((task) => {
     if (task.id === taskId) {
       return {
         ...task,
-        subtasks: [...(task.subtasks || []), { title, completed: false }]
+        subtasks: [...(task.subtasks || []), { title, completed: false }],
       }
     }
     return task
@@ -421,28 +462,28 @@ const addSubtask = (taskId) => {
 }
 
 const toggleSubtaskComplete = (taskId, subtaskIndex) => {
-  const updatedTasks = props.tasks.map(task => {
+  const updatedTasks = props.tasks.map((task) => {
     if (task.id === taskId) {
-      const updatedSubtasks = task.subtasks.map((st, idx) => 
-        idx === subtaskIndex ? { ...st, completed: !st.completed } : st
+      const updatedSubtasks = task.subtasks.map((st, idx) =>
+        idx === subtaskIndex ? { ...st, completed: !st.completed } : st,
       )
       return { ...task, subtasks: updatedSubtasks }
     }
     return task
   })
-  
+
   emit('update:tasks', updatedTasks)
 }
 
 const deleteSubtask = (taskId, subtaskIndex) => {
-  const updatedTasks = props.tasks.map(task => {
+  const updatedTasks = props.tasks.map((task) => {
     if (task.id === taskId) {
       const updatedSubtasks = task.subtasks.filter((_, idx) => idx !== subtaskIndex)
       return { ...task, subtasks: updatedSubtasks }
     }
     return task
   })
-  
+
   emit('update:tasks', updatedTasks)
 }
 
@@ -1003,5 +1044,35 @@ const playCompletionEffect = () => {
 .slide-down-leave-to {
   max-height: 0;
   opacity: 0;
+}
+
+/* Fullscreen mode styles */
+.todo-container.is-fullscreen {
+  padding: 30px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.todo-container.is-fullscreen .task-list {
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 24px;
+}
+
+.todo-container.is-fullscreen .add-task-form {
+  margin-bottom: 24px;
+}
+
+.todo-container.is-fullscreen .task-item {
+  padding: 20px;
+}
+
+.todo-container.is-fullscreen .task-header h4 {
+  font-size: 18px;
+}
+
+.todo-container.is-fullscreen .todo-stats {
+  margin-top: auto;
 }
 </style>
