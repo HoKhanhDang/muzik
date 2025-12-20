@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import * as sqlite3 from 'sqlite3'
-import * as pg from 'pg' // Use * as pg to avoid default export issues with some bundlers, or just import { Pool }
+import postgres from 'postgres'
 import { join } from 'path'
 
 @Injectable()
@@ -18,13 +18,11 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`Initializing database with type: ${this.dbType}`)
 
     if (this.dbType === 'postgresql') {
-      const { Pool } = pg
-      this.db = new Pool({
-        connectionString: this.configService.get<string>('DATABASE_URL'),
+      const dbUrl = this.configService.get<string>('DATABASE_URL')
+      this.db = postgres(dbUrl, {
         ssl: { rejectUnauthorized: false },
         max: 1,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 10000,
+        // Compatibility options if needed, but defaults are usually fine
       })
       this.logger.log('Connected to PostgreSQL/Supabase database')
       await this.initDatabaseSchema()
@@ -57,8 +55,8 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   // Helper function to execute database queries
   async executeQuery(query: string, params: any[] = []): Promise<any[]> {
     if (this.dbType === 'postgresql') {
-      const result = await this.db.query(query, params)
-      return result.rows
+      const result = await this.db.unsafe(query, params)
+      return result
     } else {
       return new Promise((resolve, reject) => {
         this.db.all(query, params, (err, rows) => {
@@ -72,8 +70,8 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   // Helper function to execute database query (single row)
   async executeQueryOne(query: string, params: any[] = []): Promise<any> {
     if (this.dbType === 'postgresql') {
-      const result = await this.db.query(query, params)
-      return result.rows[0] || null
+      const result = await this.db.unsafe(query, params)
+      return result[0] || null
     } else {
       return new Promise((resolve, reject) => {
         this.db.get(query, params, (err, row) => {
@@ -90,10 +88,10 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     params: any[] = [],
   ): Promise<{ rowCount: number; insertId?: any }> {
     if (this.dbType === 'postgresql') {
-      const result = await this.db.query(query, params)
+      const result = await this.db.unsafe(query, params)
       return {
-        rowCount: result.rowCount,
-        insertId: result.rows[0]?.id,
+        rowCount: result.count,
+        insertId: result[0]?.id,
       }
     } else {
       const db = this.db
@@ -123,7 +121,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         )
 
         // Users table - Must be created FIRST because other tables reference it
-        await this.db.query(`
+        await this.db.unsafe(`
         CREATE TABLE IF NOT EXISTS users (
           id SERIAL PRIMARY KEY,
           email TEXT UNIQUE NOT NULL,
@@ -136,7 +134,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         this.logger.log('Users table ready')
 
         // Videos table
-        await this.db.query(`
+        await this.db.unsafe(`
         CREATE TABLE IF NOT EXISTS videos (
           id SERIAL PRIMARY KEY,
           title TEXT NOT NULL,
@@ -153,7 +151,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
         // Add user_id column to videos if it doesn't exist (migration)
         try {
-          await this.db.query(
+          await this.db.unsafe(
             `ALTER TABLE videos ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id)`,
           )
         } catch (err) {
@@ -162,16 +160,16 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
         // Remove UNIQUE constraint from video_id if it exists (migration)
         try {
-          await this.db.query(`ALTER TABLE videos DROP CONSTRAINT IF EXISTS videos_video_id_key`)
+          await this.db.unsafe(`ALTER TABLE videos DROP CONSTRAINT IF EXISTS videos_video_id_key`)
         } catch (err) {
           // Constraint might not exist, ignore error
         }
 
         // Create indexes for videos
         try {
-          await this.db.query(`CREATE INDEX IF NOT EXISTS idx_videos_user_id ON videos(user_id)`)
-          await this.db.query(`CREATE INDEX IF NOT EXISTS idx_videos_video_id ON videos(video_id)`)
-          await this.db.query(
+          await this.db.unsafe(`CREATE INDEX IF NOT EXISTS idx_videos_user_id ON videos(user_id)`)
+          await this.db.unsafe(`CREATE INDEX IF NOT EXISTS idx_videos_video_id ON videos(video_id)`)
+          await this.db.unsafe(
             `CREATE INDEX IF NOT EXISTS idx_videos_created_at ON videos(created_at DESC)`,
           )
         } catch (err) {
@@ -179,7 +177,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         }
 
         // Films table
-        await this.db.query(`
+        await this.db.unsafe(`
         CREATE TABLE IF NOT EXISTS films (
           id SERIAL PRIMARY KEY,
           title TEXT NOT NULL,
@@ -198,7 +196,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         this.logger.log('Films table ready')
 
         // Music table
-        await this.db.query(`
+        await this.db.unsafe(`
         CREATE TABLE IF NOT EXISTS music (
           id SERIAL PRIMARY KEY,
           title TEXT NOT NULL,
@@ -215,8 +213,8 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
         // Create indexes for music table
         try {
-          await this.db.query(`CREATE INDEX IF NOT EXISTS idx_music_user_id ON music(user_id)`)
-          await this.db.query(
+          await this.db.unsafe(`CREATE INDEX IF NOT EXISTS idx_music_user_id ON music(user_id)`)
+          await this.db.unsafe(
             `CREATE INDEX IF NOT EXISTS idx_music_created_at ON music(created_at DESC)`,
           )
         } catch (err) {
@@ -224,7 +222,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         }
 
         // Playlists table
-        await this.db.query(`
+        await this.db.unsafe(`
         CREATE TABLE IF NOT EXISTS playlists (
           id SERIAL PRIMARY KEY,
           name TEXT NOT NULL,
@@ -239,7 +237,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
         // Add type column if it doesn't exist (migration)
         try {
-          await this.db.query(
+          await this.db.unsafe(
             `ALTER TABLE playlists ADD COLUMN IF NOT EXISTS type TEXT CHECK (type IN ('video', 'film')) DEFAULT 'film'`,
           )
         } catch (err) {
@@ -248,13 +246,13 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
         // Migrate existing playlists: change 'music' to 'film'
         try {
-          await this.db.query(`UPDATE playlists SET type = 'film' WHERE type = 'music'`)
+          await this.db.unsafe(`UPDATE playlists SET type = 'film' WHERE type = 'music'`)
         } catch (err) {
           // Ignore migration errors
         }
 
         // Playlist items table
-        await this.db.query(`
+        await this.db.unsafe(`
         CREATE TABLE IF NOT EXISTS playlist_items (
           id SERIAL PRIMARY KEY,
           playlist_id INTEGER REFERENCES playlists(id) ON DELETE CASCADE,
@@ -268,7 +266,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
         // Add film_id column if it doesn't exist (migration)
         try {
-          await this.db.query(
+          await this.db.unsafe(
             `ALTER TABLE playlist_items ADD COLUMN IF NOT EXISTS film_id INTEGER REFERENCES films(id) ON DELETE CASCADE`,
           )
         } catch (err) {
@@ -277,14 +275,14 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
         // Change video_id from INTEGER to TEXT (migration)
         try {
-          await this.db.query(`ALTER TABLE playlist_items ALTER COLUMN video_id TYPE TEXT`)
+          await this.db.unsafe(`ALTER TABLE playlist_items ALTER COLUMN video_id TYPE TEXT`)
         } catch (err) {
           // Column might already be TEXT, ignore error
         }
 
         // Remove music_id column if it exists (migration from old schema)
         try {
-          await this.db.query(`ALTER TABLE playlist_items DROP COLUMN IF EXISTS music_id`)
+          await this.db.unsafe(`ALTER TABLE playlist_items DROP COLUMN IF EXISTS music_id`)
         } catch (err) {
           // Column might not exist, ignore error
         }
