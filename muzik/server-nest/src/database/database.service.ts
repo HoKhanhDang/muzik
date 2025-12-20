@@ -117,6 +117,24 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   private async initDatabaseSchema() {
     if (this.dbType === 'postgresql') {
       try {
+        const dbUrl = this.configService.get<string>('DATABASE_URL')
+        this.logger.log(
+          `Connecting to DB URL: ${dbUrl ? 'Found (Length: ' + dbUrl.length + ')' : 'Not Found'}`,
+        )
+
+        // Users table - Must be created FIRST because other tables reference it
+        await this.db.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id SERIAL PRIMARY KEY,
+          email TEXT UNIQUE NOT NULL,
+          password_hash TEXT NOT NULL,
+          username TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `)
+        this.logger.log('Users table ready')
+
         // Videos table
         await this.db.query(`
         CREATE TABLE IF NOT EXISTS videos (
@@ -133,7 +151,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       `)
         this.logger.log('Videos table ready')
 
-        // Add user_id column if it doesn't exist (migration)
+        // Add user_id column to videos if it doesn't exist (migration)
         try {
           await this.db.query(
             `ALTER TABLE videos ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id)`,
@@ -149,7 +167,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           // Constraint might not exist, ignore error
         }
 
-        // Create indexes for better performance
+        // Create indexes for videos
         try {
           await this.db.query(`CREATE INDEX IF NOT EXISTS idx_videos_user_id ON videos(user_id)`)
           await this.db.query(`CREATE INDEX IF NOT EXISTS idx_videos_video_id ON videos(video_id)`)
@@ -159,19 +177,6 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         } catch (err) {
           // Indexes might already exist, ignore error
         }
-
-        // Users table
-        await this.db.query(`
-        CREATE TABLE IF NOT EXISTS users (
-          id SERIAL PRIMARY KEY,
-          email TEXT UNIQUE NOT NULL,
-          password_hash TEXT NOT NULL,
-          username TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `)
-        this.logger.log('Users table ready')
 
         // Films table
         await this.db.query(`
