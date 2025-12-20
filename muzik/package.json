@@ -13,8 +13,8 @@
     "test:unit": "vitest",
     "lint": "eslint . --fix --cache",
     "format": "prettier --write src/",
-    "start:server": "cd server && npm start",
-    "dev:server": "cd server && npm run dev",
+    "start:server": "cd server-nest && npm start",
+    "dev:server": "cd server-nest && npm run dev",
     "start:all": "concurrently \"npm run start:server\" \"npm run dev\"",
     "dev:all": "concurrently \"npm run dev:server\" \"npm run dev\""
   },
