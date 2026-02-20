@@ -2,8 +2,16 @@
  * Network detection utility for optimizing YouTube player based on connection quality
  */
 
+// ============================================================
+// Speed detection cache (TTL = 2 min)
+// Avoids redundant HEAD requests to youtube.com/favicon.ico
+// ============================================================
+const SPEED_CACHE_TTL = 2 * 60 * 1000 // 2 minutes
+let speedCache = { result: null, timestamp: 0 }
+
 /**
  * Detect network speed using Network Information API
+ * Results are cached for 2 minutes to avoid redundant measurements
  * @returns {Promise<'good'|'medium'|'slow'|'offline'>}
  */
 export const detectNetworkSpeed = async () => {
@@ -12,43 +20,58 @@ export const detectNetworkSpeed = async () => {
     return 'offline'
   }
 
+  // Return cached result if still valid
+  if (speedCache.result && (Date.now() - speedCache.timestamp < SPEED_CACHE_TTL)) {
+    return speedCache.result
+  }
+
   // Check Network Information API
   const connection = navigator.connection || 
                      navigator.mozConnection || 
                      navigator.webkitConnection
 
+  let result
+
   if (!connection) {
     // Fallback: try to measure actual speed
-    return await measureNetworkSpeed()
+    result = await measureNetworkSpeed()
+  } else {
+    // Check effective type
+    const effectiveType = connection.effectiveType
+    if (effectiveType === 'slow-2g' || effectiveType === '2g') {
+      result = 'slow'
+    } else if (effectiveType === '3g') {
+      result = 'medium'
+    } else if (connection.downlink) {
+      // Check downlink speed as additional indicator
+      if (connection.downlink < 1) {
+        result = 'slow'
+      } else if (connection.downlink < 2) {
+        result = 'medium'
+      } else {
+        result = 'good'
+      }
+    } else {
+      result = 'good'
+    }
   }
 
-  // Check effective type
-  const effectiveType = connection.effectiveType
-  if (effectiveType === 'slow-2g' || effectiveType === '2g') {
-    return 'slow'
-  }
-  if (effectiveType === '3g') {
-    return 'medium'
-  }
-  
-  // Check downlink speed as additional indicator
-  if (connection.downlink) {
-    if (connection.downlink < 1) {
-      return 'slow'
-    }
-    if (connection.downlink < 2) {
-      return 'medium'
-    }
-  }
-
-  return 'good'
+  // Cache the result
+  speedCache = { result, timestamp: Date.now() }
+  return result
 }
 
 /**
  * Measure network speed by downloading a small file
+ * Uses its own internal cache to avoid repeated fetch calls
  * @returns {Promise<'good'|'medium'|'slow'>}
  */
 const measureNetworkSpeed = async () => {
+  // Return cached result if available (avoids redundant fetch)
+  if (speedCache.result && (Date.now() - speedCache.timestamp < SPEED_CACHE_TTL)) {
+    return speedCache.result
+  }
+
   try {
     const startTime = performance.now()
     
@@ -145,6 +168,8 @@ export const setupNetworkMonitoring = (callback) => {
                      navigator.webkitConnection
 
   const handleChange = async () => {
+    // Invalidate cache on network change so we get fresh measurement
+    speedCache = { result: null, timestamp: 0 }
     const quality = await detectNetworkSpeed()
     callback(quality)
   }
@@ -156,4 +181,3 @@ export const setupNetworkMonitoring = (callback) => {
     connection.removeEventListener('change', handleChange)
   }
 }
-

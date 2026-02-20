@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, nextTick, onUnmounted } from 'vue'
 import { videoService } from '../../services/videoService.js'
 import HistorySection from '../history/HistorySection.vue'
 import PlayerControls from './PlayerControls.vue'
@@ -31,6 +31,22 @@ const emit = defineEmits([
   'toggle-volume-slider',
 ])
 
+// Toast notification system (non-blocking replacement for alert())
+const toastMessage = ref('')
+const toastType = ref('info') // 'info' | 'success' | 'error'
+const toastVisible = ref(false)
+let toastTimer = null
+
+const showToast = (message, type = 'info', duration = 3000) => {
+  if (toastTimer) clearTimeout(toastTimer)
+  toastMessage.value = message
+  toastType.value = type
+  toastVisible.value = true
+  toastTimer = setTimeout(() => {
+    toastVisible.value = false
+  }, duration)
+}
+
 // Handle double-click to paste from clipboard
 const handleDoubleClickPaste = async (event) => {
   // Focus the input first
@@ -44,23 +60,22 @@ const handleDoubleClickPaste = async (event) => {
       if (text && text.trim()) {
         emit('update:instantPlayUrl', text.trim())
         // Select all text after pasting for easy editing
-        setTimeout(() => {
-          event.target.select()
-        }, 10)
+        await nextTick()
+        event.target.select()
       }
     } else {
       console.warn('Clipboard API not available')
       // Fallback: Focus input and show message
       event.target.select()
-      alert('Clipboard access not available. Please use Ctrl+V (Cmd+V on Mac) to paste.')
+      showToast('Clipboard access not available. Please use Ctrl+V (Cmd+V on Mac) to paste.', 'error', 4000)
     }
   } catch (error) {
     console.warn('Failed to read clipboard:', error)
     // If permission denied or other error, focus input for manual paste
     event.target.select()
-    // Optionally show a user-friendly message
+    // Show a user-friendly message
     if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-      alert('Clipboard access denied. Please allow clipboard access or use Ctrl+V (Cmd+V on Mac) to paste.')
+      showToast('Clipboard access denied. Please allow clipboard access or use Ctrl+V (Cmd+V on Mac) to paste.', 'error', 4000)
     }
   }
 }
@@ -70,22 +85,39 @@ const searchQuery = ref('')
 const searchResults = ref([])
 const searching = ref(false)
 const searchError = ref('')
+const hasSearched = ref(false) // Track if user has performed a search
 const viewMode = ref('search') // 'search' or 'instant'
+
+// AbortController to cancel in-flight search requests on unmount or new search
+let searchAbortController = null
 
 const handleSearch = async () => {
   if (!searchQuery.value.trim()) return
   
+  // Cancel any previous in-flight request
+  if (searchAbortController) {
+    searchAbortController.abort()
+  }
+  searchAbortController = new AbortController()
+  
   searching.value = true
   searchError.value = ''
   searchResults.value = []
+  hasSearched.value = true
   
   // Ensure viewMode is 'search' to display results
   viewMode.value = 'search'
   
   try {
-    const results = await videoService.searchYouTube(searchQuery.value, 20)
+    const results = await videoService.searchYouTube(
+      searchQuery.value,
+      20,
+      searchAbortController.signal
+    )
     searchResults.value = results
   } catch (error) {
+    // Don't show error if request was intentionally aborted
+    if (error.name === 'AbortError') return
     searchError.value = 'Unable to search. Please try again or check API key.'
     console.error('Search error:', error)
   } finally {
@@ -93,27 +125,22 @@ const handleSearch = async () => {
   }
 }
 
-const handleAddToPlaylist = async (video) => {
-  try {
-    await videoService.create({
-      title: video.title,
-      video_id: video.videoId,
-      youtube_url: `https://www.youtube.com/watch?v=${video.videoId}`,
-      thumbnail_url: video.thumbnail
-    })
-    alert('Video added to playlist!')
-  } catch (error) {
-    alert('Error adding video: ' + (error.message || 'Unknown error'))
+// Cleanup on unmount: cancel in-flight requests and clear toast timer
+onUnmounted(() => {
+  if (searchAbortController) {
+    searchAbortController.abort()
   }
-}
+  if (toastTimer) {
+    clearTimeout(toastTimer)
+  }
+})
 
-const handlePlayNow = (video) => {
+const handlePlayNow = async (video) => {
   const url = `https://www.youtube.com/watch?v=${video.videoId}`
   emit('update:instantPlayUrl', url)
-  // Use setTimeout to ensure the url is updated before emitting instant-play
-  setTimeout(() => {
-    emit('instant-play')
-  }, 100)
+  // Use nextTick to ensure the url is updated before emitting instant-play
+  await nextTick()
+  emit('instant-play')
 }
 
 const handleSwitchToInstant = () => {
@@ -191,7 +218,7 @@ const handleSwitchToInstant = () => {
         <h4 class="results-header">Search Results ({{ searchResults.length }})</h4>
         <div class="video-grid">
           <div v-for="video in searchResults" :key="video.videoId" class="video-card">
-            <img :src="video.thumbnail" :alt="video.title" class="thumbnail" />
+            <img :src="video.thumbnail" :alt="video.title" class="thumbnail" loading="lazy" />
             <div class="video-info">
               <h4 class="video-title" :title="video.title">{{ video.title }}</h4>
               <p class="channel-name">{{ video.channelTitle }}</p>
@@ -211,8 +238,8 @@ const handleSwitchToInstant = () => {
         {{ searchError }}
       </div>
 
-      <!-- Empty State -->
-      <div v-if="!searching && searchResults.length === 0 && !searchError && searchQuery" class="empty-state">
+      <!-- Empty State (only show after an actual search, not just typing) -->
+      <div v-if="!searching && searchResults.length === 0 && !searchError && hasSearched" class="empty-state">
         <p>No videos found. Try different keywords.</p>
       </div>
     </div>
@@ -256,6 +283,14 @@ const handleSwitchToInstant = () => {
         @add-from-history="$emit('add-from-history', $event)"
       />
     </div>
+
+    <!-- Toast Notification (non-blocking replacement for alert) -->
+    <Transition name="toast">
+      <div v-if="toastVisible" class="toast-notification" :class="`toast-${toastType}`">
+        <span class="toast-message">{{ toastMessage }}</span>
+        <button @click="toastVisible = false" class="toast-close">&times;</button>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -269,6 +304,7 @@ const handleSwitchToInstant = () => {
   min-height: 0;
   scrollbar-width: thin;
   scrollbar-color: #4a4a4a #2a2a2a;
+  will-change: transform, opacity;
 }
 
 .tab-content::-webkit-scrollbar {
@@ -607,50 +643,81 @@ const handleSwitchToInstant = () => {
   box-shadow: none;
 }
 
-.quick-actions {
-  background-color: #3a3a3a;
-  padding: 12px;
+/* Toast Notification */
+.toast-notification {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 20px;
   border-radius: 8px;
-  flex-shrink: 0;
-  margin-bottom: 12px;
-}
-
-.quick-actions h4 {
-  color: #4ecdc4;
-  margin-bottom: 15px;
-  font-size: 16px;
-}
-
-.quick-buttons {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.quick-btn {
-  background-color: #2a2a2a;
   color: white;
-  border: 1px solid #555;
-  padding: 10px 16px;
-  border-radius: 6px;
-  cursor: pointer;
   font-size: 13px;
-  transition: all 0.3s ease;
-  flex: 1;
-  min-width: 100px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 9999;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  max-width: 90vw;
+  word-break: break-word;
 }
 
-.quick-btn:hover:not(:disabled) {
-  background-color: #4ecdc4;
-  border-color: #4ecdc4;
-  transform: translateY(-1px);
+.toast-info {
+  background: linear-gradient(145deg, #4285f4, #357ae8);
 }
 
-.quick-btn:disabled {
-  background-color: #1a1a1a;
-  color: #666;
-  cursor: not-allowed;
-  transform: none;
+.toast-success {
+  background: linear-gradient(145deg, #51cf66, #40c057);
+}
+
+.toast-error {
+  background: linear-gradient(145deg, #ff6b6b, #ff5252);
+}
+
+.toast-close {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 18px;
+  cursor: pointer;
+  opacity: 0.8;
+  padding: 0 4px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.toast-close:hover {
+  opacity: 1;
+}
+
+.toast-enter-active {
+  animation: toastSlideIn 0.3s ease-out;
+}
+
+.toast-leave-active {
+  animation: toastSlideOut 0.3s ease-in;
+}
+
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes toastSlideOut {
+  from {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
 }
 
 /* Tablet */

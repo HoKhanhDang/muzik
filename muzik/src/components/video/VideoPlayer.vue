@@ -15,6 +15,10 @@ defineProps({
   isPlaying: Boolean,
   currentTime: Number,
   duration: Number,
+  // Player resilience props
+  playerError: Object,      // { code, message, videoId }
+  isBuffering: Boolean,
+  bufferingDuration: Number, // seconds of continuous buffering
 })
 
 defineEmits([
@@ -25,6 +29,10 @@ defineEmits([
   'set-volume',
   'toggle-play',
   'seek',
+  // Player resilience emits
+  'skip-video',
+  'retry-video',
+  'reduce-quality',
 ])
 </script>
 
@@ -36,8 +44,39 @@ defineEmits([
       
       <!-- Overlays for video mode -->
       <div v-if="!audioOnlyMode" class="overlay-container">
+        <!-- Player Error state -->
+        <div v-if="playerError" class="error-state">
+          <div class="error-icon">⚠️</div>
+          <h3 class="error-title">Can't Play This Video</h3>
+          <p class="error-message">{{ playerError.message }}</p>
+          <p class="error-video-id">Video: {{ playerError.videoId }}</p>
+          <p class="error-auto-skip">Auto-skipping in 3s...</p>
+          <div class="error-actions">
+            <button @click="$emit('retry-video')" class="error-btn retry-btn">
+              <span>🔄</span> Retry
+            </button>
+            <button @click="$emit('skip-video')" class="error-btn skip-btn">
+              <span>⏭️</span> Skip Now
+            </button>
+          </div>
+        </div>
+
+        <!-- Buffering state (only show when buffering > 3 seconds to avoid flicker) -->
+        <div v-else-if="isBuffering && bufferingDuration > 3" class="buffering-state">
+          <div class="spinner"></div>
+          <p class="buffering-text">Buffering... {{ bufferingDuration }}s</p>
+          <p v-if="bufferingDuration >= 15" class="buffering-warning">⚠️ Slow network detected</p>
+          <button
+            v-if="bufferingDuration >= 15"
+            @click="$emit('reduce-quality')"
+            class="reduce-quality-btn"
+          >
+            📉 Reduce Quality
+          </button>
+        </div>
+
         <!-- Loading state -->
-        <div v-if="loading && videoIds.length === 0" class="loading-state">
+        <div v-else-if="loading && videoIds.length === 0" class="loading-state">
           <div class="spinner"></div>
           <p>Loading your playlist...</p>
         </div>
@@ -394,5 +433,147 @@ defineEmits([
   100% {
     transform: rotate(360deg);
   }
+}
+
+/* Player Error State */
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.85);
+  color: white;
+  text-align: center;
+  padding: 40px 20px;
+  animation: fadeIn 0.3s ease;
+}
+
+.error-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.error-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #ff6b6b;
+  margin: 0 0 8px 0;
+}
+
+.error-message {
+  font-size: 14px;
+  color: #ccc;
+  margin: 0 0 6px 0;
+  max-width: 400px;
+}
+
+.error-video-id {
+  font-size: 12px;
+  color: #888;
+  margin: 0 0 10px 0;
+  font-family: monospace;
+}
+
+.error-auto-skip {
+  font-size: 13px;
+  color: #ffd43b;
+  margin: 0 0 16px 0;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.error-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.error-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.retry-btn {
+  background: linear-gradient(145deg, #4ecdc4, #45b7aa);
+  color: white;
+}
+
+.retry-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(78, 205, 196, 0.4);
+}
+
+.skip-btn {
+  background: linear-gradient(145deg, #ff6b6b, #ff5252);
+  color: white;
+}
+
+.skip-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4);
+}
+
+/* Buffering State */
+.buffering-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  text-align: center;
+  padding: 40px;
+  animation: fadeIn 0.3s ease;
+}
+
+.buffering-text {
+  font-size: 16px;
+  color: #ccc;
+  margin: 10px 0 0 0;
+}
+
+.buffering-warning {
+  font-size: 14px;
+  color: #ffd43b;
+  margin: 8px 0;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.reduce-quality-btn {
+  margin-top: 12px;
+  padding: 10px 20px;
+  background: linear-gradient(145deg, #ffd43b, #fab005);
+  color: #1a1a1a;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.reduce-quality-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 212, 59, 0.4);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 </style>

@@ -41,6 +41,16 @@ const currentTime = ref(0) // Current playback time in seconds
 const duration = ref(0) // Total video duration in seconds
 const timeUpdateInterval = ref(null) // Interval for updating current time
 
+// Player error & buffering resilience state
+const playerError = ref(null) // { code, message, videoId }
+const isBuffering = ref(false)
+const bufferingDuration = ref(0) // seconds of continuous buffering
+let bufferingTimer = null // interval tracking buffering duration
+let bufferingStartTime = null
+let autoSkipTimer = null // timer for auto-skipping errored videos
+let videoRetryCount = 0 // retry counter for current video
+const MAX_VIDEO_RETRIES = 1
+
 // Form data for adding new videos
 const newVideo = ref({
   title: '',
@@ -108,7 +118,24 @@ const checkAndInitializePlayer = () => {
   }
 }
 
+// ============================================================
+// Video info cache (TTL = 30 min, max 100 entries)
+// Prevents redundant oEmbed + CORS proxy calls for same video
+// ============================================================
+const VIDEO_INFO_CACHE_TTL = 30 * 60 * 1000 // 30 minutes
+const VIDEO_INFO_CACHE_MAX_SIZE = 100
+const videoInfoCache = new Map()
+
 const fetchVideoInfo = async (videoId) => {
+  // Check cache first
+  const cached = videoInfoCache.get(videoId)
+  if (cached && (Date.now() - cached.timestamp < VIDEO_INFO_CACHE_TTL)) {
+    console.log(`[VideoInfo Cache HIT] ${videoId}`)
+    return cached.data
+  }
+
+  let result = null
+
   try {
     // Method 1: Try to fetch from YouTube oEmbed API (no API key needed)
     const oEmbedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`
@@ -116,7 +143,7 @@ const fetchVideoInfo = async (videoId) => {
     const response = await fetch(oEmbedUrl)
     if (response.ok) {
       const data = await response.json()
-      return {
+      result = {
         title: data.title || `Video ${videoId}`,
         thumbnail_url: data.thumbnail_url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
         duration: null,
@@ -126,35 +153,48 @@ const fetchVideoInfo = async (videoId) => {
     console.log('Could not fetch video info from oEmbed:', error)
   }
 
-  try {
-    // Method 2: Try alternative approach using CORS proxy
-    const proxyUrl = 'https://api.allorigins.win/raw?url='
-    const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`
+  if (!result) {
+    try {
+      // Method 2: Try alternative approach using CORS proxy
+      const proxyUrl = 'https://api.allorigins.win/raw?url='
+      const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`
 
-    const response = await fetch(`${proxyUrl}${encodeURIComponent(youtubeUrl)}`)
-    if (response.ok) {
-      const html = await response.text()
+      const response = await fetch(`${proxyUrl}${encodeURIComponent(youtubeUrl)}`)
+      if (response.ok) {
+        const html = await response.text()
 
-      // Extract title from HTML meta tags
-      const titleMatch = html.match(/<title>([^<]+)<\/title>/i)
-      const title = titleMatch ? titleMatch[1].replace(' - YouTube', '').trim() : `Video ${videoId}`
+        // Extract title from HTML meta tags
+        const titleMatch = html.match(/<title>([^<]+)<\/title>/i)
+        const title = titleMatch ? titleMatch[1].replace(' - YouTube', '').trim() : `Video ${videoId}`
 
-      return {
-        title: title,
-        thumbnail_url: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
-        duration: null,
+        result = {
+          title: title,
+          thumbnail_url: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+          duration: null,
+        }
       }
+    } catch (error) {
+      console.log('Could not fetch video info from HTML:', error)
     }
-  } catch (error) {
-    console.log('Could not fetch video info from HTML:', error)
   }
 
   // Fallback: return basic info with thumbnail
-  return {
-    title: `Video ${videoId}`,
-    thumbnail_url: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
-    duration: null,
+  if (!result) {
+    result = {
+      title: `Video ${videoId}`,
+      thumbnail_url: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+      duration: null,
+    }
   }
+
+  // Store in cache (even fallback results, to avoid re-fetching)
+  if (videoInfoCache.size >= VIDEO_INFO_CACHE_MAX_SIZE) {
+    const oldestKey = videoInfoCache.keys().next().value
+    videoInfoCache.delete(oldestKey)
+  }
+  videoInfoCache.set(videoId, { data: result, timestamp: Date.now() })
+
+  return result
 }
 
 const addVideo = async () => {
@@ -312,6 +352,11 @@ const initializePlayer = () => {
   // Get optimized playerVars based on network quality
   const optimizedPlayerVars = getOptimalPlayerVars(networkQuality.value, audioOnlyMode.value)
 
+  // Clear previous error state when initializing
+  playerError.value = null
+  clearBufferingState()
+  videoRetryCount = 0
+
   try {
     player.value = new window.YT.Player('player', {
       height: audioOnlyMode.value ? '1' : '100%',
@@ -322,6 +367,7 @@ const initializePlayer = () => {
         onReady: (event) => {
           console.log('Player ready!')
           isPlayerReady.value = true
+          playerError.value = null
           event.target.setVolume(volume.value)
           
           // Force lower quality for slow networks or audio-only mode
@@ -357,18 +403,16 @@ const initializePlayer = () => {
           }
         },
         onStateChange: handlePlayerStateChange,
-        onError: (event) => {
-          console.error('Player error:', event.data)
-          if (event.data === 5) {
-            console.error('HTML5 player error - video may be unavailable')
-          } else if (event.data === 101 || event.data === 150) {
-            console.error('Video not allowed in embedded player')
-          }
-        },
+        onError: handlePlayerError,
       },
     })
   } catch (error) {
     console.error('Failed to create player:', error)
+    playerError.value = {
+      code: -1,
+      message: 'Failed to create player. Please refresh the page.',
+      videoId: videoId,
+    }
   }
 }
 
@@ -376,10 +420,13 @@ const playNextVideo = () => {
   if (videoIds.value.length === 0) return
   currentVideoIndex.value = (currentVideoIndex.value + 1) % videoIds.value.length
   
-  // Reset time tracking
+  // Reset state for new video
   stopTimeTracking()
   currentTime.value = 0
   duration.value = 0
+  playerError.value = null
+  clearBufferingState()
+  videoRetryCount = 0
   
   if (player.value && isPlayerReady.value && typeof player.value.loadVideoById === 'function') {
     try {
@@ -400,10 +447,13 @@ const playPreviousVideo = () => {
   currentVideoIndex.value =
     currentVideoIndex.value === 0 ? videoIds.value.length - 1 : currentVideoIndex.value - 1
   
-  // Reset time tracking
+  // Reset state for new video
   stopTimeTracking()
   currentTime.value = 0
   duration.value = 0
+  playerError.value = null
+  clearBufferingState()
+  videoRetryCount = 0
   
   if (player.value && isPlayerReady.value && typeof player.value.loadVideoById === 'function') {
     try {
@@ -558,18 +608,146 @@ const handleSeek = (time) => {
   }
 }
 
+// ============================================================
+// Player Error Handler — classify errors and auto-skip
+// ============================================================
+const ERROR_MESSAGES = {
+  2: 'Invalid video ID',
+  5: 'HTML5 player error — video may be unavailable',
+  100: 'Video has been removed or is private',
+  101: 'Video owner does not allow embedded playback',
+  150: 'Video owner does not allow embedded playback',
+}
+
+const handlePlayerError = (event) => {
+  const errorCode = event.data
+  const videoId = videoIds.value[currentVideoIndex.value]
+  const message = ERROR_MESSAGES[errorCode] || `Unknown player error (code: ${errorCode})`
+
+  console.error(`[Player Error] Code ${errorCode}: ${message} — Video: ${videoId}`)
+
+  // For HTML5 errors (code 5), retry once before skipping
+  if (errorCode === 5 && videoRetryCount < MAX_VIDEO_RETRIES) {
+    videoRetryCount++
+    console.log(`[Retry ${videoRetryCount}/${MAX_VIDEO_RETRIES}] Retrying video: ${videoId}`)
+    playerError.value = { code: errorCode, message: 'Retrying...', videoId }
+    setTimeout(() => {
+      if (player.value && isPlayerReady.value && typeof player.value.loadVideoById === 'function') {
+        player.value.loadVideoById(videoId)
+      }
+    }, 2000)
+    return
+  }
+
+  // Set error state for UI
+  playerError.value = { code: errorCode, message, videoId }
+  isPlaying.value = false
+  stopTimeTracking()
+
+  // Auto-skip after 3 seconds
+  if (autoSkipTimer) clearTimeout(autoSkipTimer)
+  autoSkipTimer = setTimeout(() => {
+    if (playerError.value && playerError.value.videoId === videoId) {
+      console.log(`[Auto-skip] Skipping unplayable video: ${videoId}`)
+      playerError.value = null
+      videoRetryCount = 0
+      playNextVideo()
+    }
+  }, 3000)
+}
+
+// ============================================================
+// Buffering State Management
+// ============================================================
+const clearBufferingState = () => {
+  isBuffering.value = false
+  bufferingDuration.value = 0
+  bufferingStartTime = null
+  if (bufferingTimer) {
+    clearInterval(bufferingTimer)
+    bufferingTimer = null
+  }
+}
+
+const startBufferingTimer = () => {
+  if (bufferingTimer) return // already tracking
+  bufferingStartTime = Date.now()
+  isBuffering.value = true
+  bufferingDuration.value = 0
+
+  bufferingTimer = setInterval(() => {
+    if (!bufferingStartTime) return
+    bufferingDuration.value = Math.floor((Date.now() - bufferingStartTime) / 1000)
+
+    // After 30s of buffering, try to auto-reduce quality
+    if (bufferingDuration.value === 30) {
+      console.warn('[Buffering] 30s — attempting quality reduction')
+      try {
+        if (player.value && typeof player.value.setPlaybackQuality === 'function') {
+          player.value.setPlaybackQuality('small')
+        }
+      } catch (e) {
+        console.warn('Could not reduce quality:', e)
+      }
+    }
+  }, 1000)
+}
+
 // Helper function for consistent state change handling
 const handlePlayerStateChange = (event) => {
   if (event.data === window.YT.PlayerState.PLAYING) {
     isPlaying.value = true
+    playerError.value = null
+    clearBufferingState()
     startTimeTracking()
   } else if (event.data === window.YT.PlayerState.PAUSED) {
     isPlaying.value = false
+    clearBufferingState()
     stopTimeTracking()
   } else if (event.data === window.YT.PlayerState.ENDED) {
     isPlaying.value = false
+    clearBufferingState()
     stopTimeTracking()
     playNextVideo()
+  } else if (event.data === window.YT.PlayerState.BUFFERING) {
+    // State 3 = BUFFERING
+    startBufferingTimer()
+  } else if (event.data === -1) {
+    // State -1 = UNSTARTED (video cued but not playing)
+    clearBufferingState()
+  }
+}
+
+// Skip errored video manually (called from VideoPlayer UI)
+const skipErroredVideo = () => {
+  if (autoSkipTimer) clearTimeout(autoSkipTimer)
+  playerError.value = null
+  videoRetryCount = 0
+  playNextVideo()
+}
+
+// Retry errored video manually (called from VideoPlayer UI)
+const retryErroredVideo = () => {
+  if (autoSkipTimer) clearTimeout(autoSkipTimer)
+  playerError.value = null
+  videoRetryCount = 0
+  const videoId = videoIds.value[currentVideoIndex.value]
+  if (player.value && isPlayerReady.value && typeof player.value.loadVideoById === 'function') {
+    player.value.loadVideoById(videoId)
+  } else {
+    initializePlayer()
+  }
+}
+
+// Reduce quality manually (called from VideoPlayer UI during buffering)
+const reduceQuality = () => {
+  try {
+    if (player.value && typeof player.value.setPlaybackQuality === 'function') {
+      player.value.setPlaybackQuality('small')
+      console.log('[Quality] Reduced to small')
+    }
+  } catch (e) {
+    console.warn('Could not reduce quality:', e)
   }
 }
 
@@ -1324,8 +1502,10 @@ const loadYouTubeAPI = async () => {
   const directUrl = 'https://www.youtube.com/iframe_api'
 
   // Try loading with proxy first if enabled, otherwise try direct
+  // tryLoad with 10s timeout to prevent hanging on slow networks
+  const LOAD_TIMEOUT = 10000 // 10 seconds
   const tryLoad = (url, method) => {
-    return new Promise((resolve, reject) => {
+    const loadPromise = new Promise((resolve, reject) => {
       const tag = document.createElement('script')
       tag.src = url
       tag.async = true // Async loading for better performance
@@ -1354,6 +1534,13 @@ const loadYouTubeAPI = async () => {
         document.head.appendChild(tag)
       }
     })
+
+    // Race against timeout
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(`Timeout loading YouTube API via ${method} (${LOAD_TIMEOUT / 1000}s)`)), LOAD_TIMEOUT)
+    })
+
+    return Promise.race([loadPromise, timeoutPromise])
   }
 
   // Try loading: proxy first if enabled, then direct as fallback
@@ -1410,6 +1597,9 @@ onUnmounted(() => {
   eventBus.off('auth-error', handleAuthError)
   // Clean up time tracking interval
   stopTimeTracking()
+  // Clean up buffering and error timers
+  clearBufferingState()
+  if (autoSkipTimer) clearTimeout(autoSkipTimer)
 })
 </script>
 
@@ -1445,6 +1635,9 @@ onUnmounted(() => {
       :is-playing="isPlaying"
       :current-time="currentTime"
       :duration="duration"
+      :player-error="playerError"
+      :is-buffering="isBuffering"
+      :buffering-duration="bufferingDuration"
       @play-video="playVideoAtIndex"
       @play-next="playNextVideo"
       @play-previous="playPreviousVideo"
@@ -1452,6 +1645,9 @@ onUnmounted(() => {
       @set-volume="setVolume"
       @toggle-play="togglePlay"
       @seek="handleSeek"
+      @skip-video="skipErroredVideo"
+      @retry-video="retryErroredVideo"
+      @reduce-quality="reduceQuality"
     />
 
     <div v-show="showSidebar" id="list-container">
