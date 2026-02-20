@@ -1,5 +1,6 @@
 import express from 'express'
 import cors from 'cors'
+import compression from 'compression'
 import bodyParser from 'body-parser'
 import dotenv from 'dotenv'
 
@@ -15,6 +16,9 @@ dotenv.config()
 
 const app = express()
 const PORT = process.env.PORT || 3001
+
+// Middleware - Compression (gzip/brotli) for all responses (~70% size reduction)
+app.use(compression())
 
 // Middleware - Allow all origins in production for flexible CORS
 app.use(

@@ -1,5 +1,7 @@
 <script setup>
+import { ref, inject } from 'vue'
 import SvgIcon from '../common/SvgIcon.vue'
+import { getThumbnailUrl } from '../../utils/thumbnailHelper.js'
 
 defineProps({
   instantPlayHistory: Array,
@@ -8,6 +10,8 @@ defineProps({
 })
 
 defineEmits(['play-from-history', 'clear-history', 'add-from-history'])
+
+const networkQuality = inject('networkQuality', ref('good'))
 </script>
 
 <template>
@@ -30,7 +34,7 @@ defineEmits(['play-from-history', 'clear-history', 'add-from-history'])
       >
         <div class="history-thumbnail" @click="$emit('play-from-history', item.video_id)">
           <img
-            :src="`https://img.youtube.com/vi/${item.video_id}/mqdefault.jpg`"
+            :src="getThumbnailUrl(item.video_id, networkQuality.value || networkQuality)"
             alt="Thumbnail"
           />
           <div class="play-overlay">

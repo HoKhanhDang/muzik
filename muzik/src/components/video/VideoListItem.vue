@@ -1,6 +1,7 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, inject } from 'vue'
 import Icon from '../common/Icon.vue'
+import { getThumbnailUrl } from '../../utils/thumbnailHelper.js'
 
 const props = defineProps({
   video: Object,
@@ -24,13 +25,14 @@ defineEmits([
 ])
 
 const thumbnailError = ref(false)
+const networkQuality = inject('networkQuality', ref('good'))
 
-const getThumbnailUrl = computed(() => {
+const getThumbnailSrc = computed(() => {
   if (props.video?.thumbnail_url) {
     return props.video.thumbnail_url
   }
   if (props.video?.video_id) {
-    return `https://img.youtube.com/vi/${props.video.video_id}/mqdefault.jpg`
+    return getThumbnailUrl(props.video.video_id, networkQuality.value)
   }
   return null
 })
@@ -67,8 +69,8 @@ watch(
       <div v-if="!isCompact" class="drag-handle">⋮⋮</div>
       <div v-if="!isCompact" class="video-thumbnail">
         <img
-          v-if="getThumbnailUrl"
-          :src="getThumbnailUrl"
+          v-if="getThumbnailSrc"
+          :src="getThumbnailSrc"
           :alt="video.title"
           @error="handleThumbnailError"
           loading="lazy"

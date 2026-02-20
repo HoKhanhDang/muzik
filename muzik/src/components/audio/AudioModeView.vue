@@ -1,5 +1,8 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, inject } from 'vue'
+import { getThumbnailUrl } from '../../utils/thumbnailHelper.js'
+
+const networkQuality = inject('networkQuality', ref('good'))
 
 const props = defineProps({
   currentVideo: Object,
@@ -178,7 +181,7 @@ const handleToggleVolumeSlider = () => {
             
             <div class="item-thumbnail">
               <img 
-                :src="`https://img.youtube.com/vi/${video.video_id}/mqdefault.jpg`" 
+                :src="getThumbnailUrl(video.video_id, networkQuality.value || networkQuality)" 
                 :alt="video.title"
                 @error="$event.target.src = 'https://via.placeholder.com/80x45?text=No+Image'"
               />

@@ -1,18 +1,20 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch, provide, defineAsyncComponent } from 'vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import AppHeader from './components/layout/AppHeader.vue'
 import VideoPlayer from './components/video/VideoPlayer.vue'
 import InstantPlayTab from './components/video/InstantPlayTab.vue'
 import YouTubeTab from './components/video/YouTubeTab.vue'
-import PlaylistTab from './components/playlist/PlaylistTab.vue'
-import MoviesTab from './components/video/MoviesTab.vue'
 import LoginPage from './components/auth/LoginPage.vue'
 import DraggableBubble from './components/common/DraggableBubble.vue'
 import { DEFAULT_ROUTE, ROUTES, isValidRoute } from './constants/routes.js'
 import { videoService, authService } from './services/index.js'
 import { eventBus } from './utils/eventBus.js'
 import { detectNetworkSpeed, getOptimalPlayerVars, setupNetworkMonitoring } from './utils/networkDetection.js'
+
+// Lazy-loaded tab components (reduces initial bundle size)
+const PlaylistTab = defineAsyncComponent(() => import('./components/playlist/PlaylistTab.vue'))
+const MoviesTab = defineAsyncComponent(() => import('./components/video/MoviesTab.vue'))
 
 // Database integration
 const videos = ref([])
@@ -51,6 +53,14 @@ let autoSkipTimer = null // timer for auto-skipping errored videos
 let videoRetryCount = 0 // retry counter for current video
 const MAX_VIDEO_RETRIES = 1
 
+// ============================================================
+// Play lock — prevents race conditions from rapid clicking
+// Each play action gets a unique ID; stale loads are discarded
+// ============================================================
+let playRequestId = 0 // incremented on every play action
+let isLoadingVideo = false // lock to prevent concurrent play requests
+let loadingLockTimer = null // safety timeout to auto-release lock
+
 // Form data for adding new videos
 const newVideo = ref({
   title: '',
@@ -66,6 +76,11 @@ const youtubeApiReady = ref(false)
 // Network quality detection
 const networkQuality = ref('good') // 'good', 'medium', 'slow', 'offline'
 const networkCleanup = ref(null) // Cleanup function for network monitoring
+const slowNetworkDismissed = ref(false) // User dismissed audio-only suggestion
+const showSlowNetworkBanner = ref(false) // Show audio-only suggestion banner
+
+// Provide networkQuality to children (for adaptive thumbnails, etc.)
+provide('networkQuality', networkQuality)
 
 const queryClient = useQueryClient()
 
@@ -418,6 +433,10 @@ const initializePlayer = () => {
 
 const playNextVideo = () => {
   if (videoIds.value.length === 0) return
+  if (isLoadingVideo) {
+    console.log('[Play Lock] Ignoring rapid click — video is loading')
+    return
+  }
   currentVideoIndex.value = (currentVideoIndex.value + 1) % videoIds.value.length
   
   // Reset state for new video
@@ -428,22 +447,15 @@ const playNextVideo = () => {
   clearBufferingState()
   videoRetryCount = 0
   
-  if (player.value && isPlayerReady.value && typeof player.value.loadVideoById === 'function') {
-    try {
-      player.value.loadVideoById(videoIds.value[currentVideoIndex.value])
-      console.log('Playing next video:', videoIds.value[currentVideoIndex.value])
-    } catch (error) {
-      console.error('Error loading next video:', error)
-      initializePlayer()
-    }
-  } else {
-    console.warn('Player not ready for next video, reinitializing...')
-    initializePlayer()
-  }
+  loadVideoSafe(videoIds.value[currentVideoIndex.value])
 }
 
 const playPreviousVideo = () => {
   if (videoIds.value.length === 0) return
+  if (isLoadingVideo) {
+    console.log('[Play Lock] Ignoring rapid click — video is loading')
+    return
+  }
   currentVideoIndex.value =
     currentVideoIndex.value === 0 ? videoIds.value.length - 1 : currentVideoIndex.value - 1
   
@@ -455,46 +467,61 @@ const playPreviousVideo = () => {
   clearBufferingState()
   videoRetryCount = 0
   
-  if (player.value && isPlayerReady.value && typeof player.value.loadVideoById === 'function') {
-    try {
-      player.value.loadVideoById(videoIds.value[currentVideoIndex.value])
-      console.log('Playing previous video:', videoIds.value[currentVideoIndex.value])
-    } catch (error) {
-      console.error('Error loading previous video:', error)
-      initializePlayer()
-    }
-  } else {
-    console.warn('Player not ready for previous video, reinitializing...')
-    initializePlayer()
-  }
+  loadVideoSafe(videoIds.value[currentVideoIndex.value])
 }
 
 const playVideoAtIndex = (index) => {
   if (videoIds.value.length === 0) return
+  if (isLoadingVideo) {
+    console.log('[Play Lock] Ignoring rapid click — video is loading')
+    return
+  }
   currentVideoIndex.value = index
   
   // Reset time tracking
   stopTimeTracking()
   currentTime.value = 0
   duration.value = 0
-  
-  // Validate player exists and has the method
+  playerError.value = null
+  clearBufferingState()
+  videoRetryCount = 0
+
+  loadVideoSafe(videoIds.value[currentVideoIndex.value])
+}
+
+/**
+ * Safe video loader with play lock and request ID tracking.
+ * Prevents race conditions from rapid clicking.
+ * - Acquires lock (auto-releases after 5s safety timeout)
+ * - Assigns unique playRequestId
+ * - Loads video only if player is ready, else reinitializes
+ */
+const loadVideoSafe = (videoId) => {
+  // Acquire lock
+  isLoadingVideo = true
+  if (loadingLockTimer) clearTimeout(loadingLockTimer)
+  loadingLockTimer = setTimeout(() => {
+    isLoadingVideo = false // safety release after 5s
+  }, 5000)
+
+  // Increment request ID — used in onStateChange to discard stale loads
+  playRequestId++
+  const myRequestId = playRequestId
+  console.log(`[Play #${myRequestId}] Loading video: ${videoId}`)
+
   if (player.value && isPlayerReady.value && typeof player.value.loadVideoById === 'function') {
     try {
-      player.value.loadVideoById(videoIds.value[currentVideoIndex.value])
-      console.log('Loading video at index:', index, 'videoId:', videoIds.value[currentVideoIndex.value])
+      player.value.loadVideoById(videoId)
     } catch (error) {
       console.error('Error loading video:', error)
-      // Try to reinitialize player
+      isLoadingVideo = false
+      if (loadingLockTimer) clearTimeout(loadingLockTimer)
       initializePlayer()
     }
   } else {
-    console.warn('Player not ready, attempting to initialize...', {
-      hasPlayer: !!player.value,
-      isReady: isPlayerReady.value,
-      hasMethod: player.value ? typeof player.value.loadVideoById : 'no player'
-    })
-    // Try to initialize player if not ready
+    console.warn('Player not ready, reinitializing...')
+    isLoadingVideo = false
+    if (loadingLockTimer) clearTimeout(loadingLockTimer)
     if (window.YT && window.YT.Player) {
       initializePlayer()
     }
@@ -643,6 +670,7 @@ const handlePlayerError = (event) => {
   playerError.value = { code: errorCode, message, videoId }
   isPlaying.value = false
   stopTimeTracking()
+  releasePlayLock()
 
   // Auto-skip after 3 seconds
   if (autoSkipTimer) clearTimeout(autoSkipTimer)
@@ -693,20 +721,35 @@ const startBufferingTimer = () => {
   }, 1000)
 }
 
+// Release play lock helper
+const releasePlayLock = () => {
+  isLoadingVideo = false
+  if (loadingLockTimer) {
+    clearTimeout(loadingLockTimer)
+    loadingLockTimer = null
+  }
+}
+
 // Helper function for consistent state change handling
 const handlePlayerStateChange = (event) => {
   if (event.data === window.YT.PlayerState.PLAYING) {
     isPlaying.value = true
     playerError.value = null
     clearBufferingState()
+    releasePlayLock() // Video started — release lock
     startTimeTracking()
+
+    // Prefetch next video metadata in background
+    prefetchNextVideo()
   } else if (event.data === window.YT.PlayerState.PAUSED) {
     isPlaying.value = false
     clearBufferingState()
+    releasePlayLock()
     stopTimeTracking()
   } else if (event.data === window.YT.PlayerState.ENDED) {
     isPlaying.value = false
     clearBufferingState()
+    releasePlayLock()
     stopTimeTracking()
     playNextVideo()
   } else if (event.data === window.YT.PlayerState.BUFFERING) {
@@ -723,6 +766,7 @@ const skipErroredVideo = () => {
   if (autoSkipTimer) clearTimeout(autoSkipTimer)
   playerError.value = null
   videoRetryCount = 0
+  releasePlayLock() // Release lock so playNextVideo can proceed
   playNextVideo()
 }
 
@@ -731,12 +775,9 @@ const retryErroredVideo = () => {
   if (autoSkipTimer) clearTimeout(autoSkipTimer)
   playerError.value = null
   videoRetryCount = 0
+  releasePlayLock() // Release lock so load can proceed
   const videoId = videoIds.value[currentVideoIndex.value]
-  if (player.value && isPlayerReady.value && typeof player.value.loadVideoById === 'function') {
-    player.value.loadVideoById(videoId)
-  } else {
-    initializePlayer()
-  }
+  loadVideoSafe(videoId)
 }
 
 // Reduce quality manually (called from VideoPlayer UI during buffering)
@@ -1466,6 +1507,52 @@ watch(activeTab, async (newTab) => {
   }
 })
 
+// ============================================================
+// #1 — Auto-suggest audio-only mode on slow network
+// ============================================================
+watch(networkQuality, (quality) => {
+  if (quality === 'slow' && !audioOnlyMode.value && !slowNetworkDismissed.value) {
+    showSlowNetworkBanner.value = true
+  } else if (quality !== 'slow') {
+    showSlowNetworkBanner.value = false
+  }
+})
+
+const dismissSlowNetworkBanner = () => {
+  showSlowNetworkBanner.value = false
+  slowNetworkDismissed.value = true // Don't ask again this session
+}
+
+const acceptSlowNetworkSuggestion = () => {
+  showSlowNetworkBanner.value = false
+  audioOnlyMode.value = true
+  slowNetworkDismissed.value = true
+  // Re-initialize player in audio-only mode
+  if (player.value && isPlayerReady.value) {
+    initializePlayer()
+  }
+}
+
+// ============================================================
+// #3 — Prefetch next video metadata in background
+// ============================================================
+const prefetchNextVideo = () => {
+  if (videoIds.value.length <= 1) return
+  const nextIndex = (currentVideoIndex.value + 1) % videoIds.value.length
+  const nextVideoId = videoIds.value[nextIndex]
+  
+  if (!nextVideoId) return
+  
+  // fetchVideoInfo already has a 30-min cache, so this is a no-op if already cached
+  fetchVideoInfo(nextVideoId).then(info => {
+    if (info) {
+      console.log(`[Prefetch] Next video ready: ${info.title || nextVideoId}`)
+    }
+  }).catch(() => {
+    // Silent fail — prefetch is best-effort
+  })
+}
+
 const handleAuthError = () => {
   handleSignOut()
 }
@@ -1620,6 +1707,23 @@ onUnmounted(() => {
       @signout="handleSignOut"
       @toggle-audio-mode="toggleAudioOnlyMode"
     />
+
+    <!-- Slow Network Suggestion Banner -->
+    <Transition name="slide-down">
+      <div v-if="showSlowNetworkBanner" class="slow-network-banner">
+        <span class="banner-icon">📶</span>
+        <span class="banner-text">Mạng chậm. Chuyển sang <strong>Audio-only</strong> để giảm buffering?</span>
+        <div class="banner-actions">
+          <button @click="acceptSlowNetworkSuggestion" class="banner-btn accept-btn">
+            🎵 Switch
+          </button>
+          <button @click="dismissSlowNetworkBanner" class="banner-btn dismiss-btn">
+            ✕
+          </button>
+        </div>
+      </div>
+    </Transition>
+
     <main>
     <VideoPlayer 
       :loading="loading" 
@@ -1766,6 +1870,78 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* Slow Network Banner */
+.slow-network-banner {
+  position: fixed;
+  top: 60px;
+  left: 0;
+  right: 0;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #ff9800, #f57c00);
+  color: white;
+  font-size: 14px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.banner-icon {
+  font-size: 20px;
+}
+
+.banner-text {
+  flex: 1;
+  text-align: center;
+}
+
+.banner-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.banner-btn {
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.accept-btn {
+  background: white;
+  color: #f57c00;
+}
+
+.accept-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.dismiss-btn {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.dismiss-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-down-enter-from,
+.slide-down-leave-to {
+  transform: translateY(-100%);
+  opacity: 0;
+}
+
 main {
   width: 100vw;
   height: calc(100vh - 60px);
